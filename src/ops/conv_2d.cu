@@ -400,22 +400,22 @@ void Conv2D::init_para_task(const Task *task,
 #else
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  curandGenerator_t genGPU;
-  curandCreateGenerator(&genGPU, CURAND_RNG_PSEUDO_DEFAULT);
-  curandSetStream(genGPU, stream);
-  curandSetPseudoRandomGeneratorSeed(genGPU, 1234ULL);
+  hiprandGenerator_t genGPU;
+  hiprandCreateGenerator(&genGPU, HIPRAND_RNG_PSEUDO_DEFAULT);
+  hiprandSetStream(genGPU, stream);
+  hiprandSetPseudoRandomGeneratorSeed(genGPU, 1234ULL);
   coord_t filter_elements = conv->inputs[0].adim[2] * conv->output.adim[2] 
                           * conv->kernel_h * conv->kernel_w;
   float factor = 1.0f / sqrt(filter_elements / conv->output.adim[2]);
   printf("factor = %.4f elements = %d\n", factor, filter_elements / conv->output.adim[2]);
   assert(filter_elements == (coord_t) rect_filter.volume());
-  curandGenerateUniform(genGPU, filter_ptr, filter_elements);
+  hiprandGenerateUniform(genGPU, filter_ptr, filter_elements);
   scale_kernel<<<GET_BLOCKS(filter_elements), CUDA_NUM_THREADS>>>(
       filter_ptr, filter_elements, -factor, factor);
-  curandGenerateUniform(genGPU, bias_ptr, conv->output.pdim[2]);
+  hiprandGenerateUniform(genGPU, bias_ptr, conv->output.pdim[2]);
   scale_kernel<<<GET_BLOCKS(conv->output.pdim[2]), CUDA_NUM_THREADS>>>(
       bias_ptr, conv->output.pdim[2], -factor, factor);
-  curandDestroyGenerator(genGPU);
+  hiprandDestroyGenerator(genGPU);
 #endif
 }
 

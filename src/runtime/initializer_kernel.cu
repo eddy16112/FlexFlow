@@ -17,7 +17,6 @@
 #include "accessor.h"
 #include "model.h"
 #include "cuda_helper.h"
-#include <curand.h>
 #include <ctime>
 
 void UniformInitializer::init_task(const Task* task,
@@ -31,15 +30,15 @@ void UniformInitializer::init_task(const Task* task,
   int inputDim = accW.rect.hi[0] - accW.rect.lo[0] + 1;
   int outputDim = accW.rect.hi[1] - accW.rect.lo[1] + 1;
   UniformInitializer* initializer = (UniformInitializer*) task->args;
-  curandGenerator_t gen;
-  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  hiprandGenerator_t gen;
+  hiprandCreateGenerator(&gen, HIPRAND_RNG_PSEUDO_DEFAULT);
   fprintf(stderr, "seed = %d\n", initializer->seed);
-  curandSetPseudoRandomGeneratorSeed(gen, initializer->seed);
-  checkCUDA(curandGenerateUniform(gen, accW.ptr, accW.rect.volume()));
+  hiprandSetPseudoRandomGeneratorSeed(gen, initializer->seed);
+  checkCUDA(hiprandGenerateUniform(gen, accW.ptr, accW.rect.volume()));
   scale_kernel<<<GET_BLOCKS(accW.rect.volume()), CUDA_NUM_THREADS>>>(
       accW.ptr, accW.rect.volume(), initializer->min_val, initializer->max_val);
   checkCUDA(cudaDeviceSynchronize());
-  curandDestroyGenerator(gen);
+  hiprandDestroyGenerator(gen);
 }
 
 void NormInitializer::init_task(const Task* task,
@@ -76,17 +75,17 @@ void NormInitializer::init_task(const Task* task,
     default:
       assert(false);
   }
-  curandGenerator_t gen;
-  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  hiprandGenerator_t gen;
+  hiprandCreateGenerator(&gen, HIPRAND_RNG_PSEUDO_DEFAULT);
   NormInitializer* initializer = (NormInitializer*) task->args;
   fprintf(stderr, "seed = %d\n", initializer->seed);
-  curandSetPseudoRandomGeneratorSeed(gen, initializer->seed);
+  hiprandSetPseudoRandomGeneratorSeed(gen, initializer->seed);
   fprintf(stderr, "domain.volume() = %zu mean(%.4lf) var(%.4lf)\n",
       domain.get_volume(), initializer->mean, initializer->stddev);
-  checkCUDA(curandGenerateNormal(gen, w, domain.get_volume(),
+  checkCUDA(hiprandGenerateNormal(gen, w, domain.get_volume(),
       initializer->mean, initializer->stddev));
   checkCUDA(cudaDeviceSynchronize());
-  curandDestroyGenerator(gen);
+  hiprandDestroyGenerator(gen);
 }
 
 void ZeroInitializer::init_task(const Task* task,

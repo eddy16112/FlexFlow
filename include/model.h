@@ -17,6 +17,7 @@
 #define _FLEXFLOW_RUNTIME_H_
 //#include <hip/hip_runtime.h>
 #include <hipblas.h>
+#include <hiprand.h>
 #include "legion.h"
 #include "config.h"
 #include "initializer.h"
@@ -24,8 +25,6 @@
 #include "accessor.h"
 #include <cudnn.h>
 #include <cuda_runtime.h>
-#include <curand.h>
-#include <cublas_v2.h>
 #include <unistd.h>
 
 using namespace Legion;
