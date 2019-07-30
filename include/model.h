@@ -24,7 +24,7 @@
 #include "initializer.h"
 #include "optimizer.h"
 #include "accessor.h"
-#include <cuda_runtime.h>
+//#include <cuda_runtime.h>
 #include <unistd.h>
 
 using namespace Legion;

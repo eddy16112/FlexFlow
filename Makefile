@@ -23,7 +23,7 @@ DEBUG           ?= 1		# Include debugging symbols
 MAX_DIM         ?= 4		# Maximum number of dimensions
 OUTPUT_LEVEL    ?= LEVEL_DEBUG	# Compile time logging level
 USE_CUDA        ?= 0		# Include CUDA support (requires CUDA)
-USE_HIP         ?= 2
+USE_HIP         ?= 1
 USE_GASNET      ?= 0		# Include GASNet support (requires GASNet)
 USE_HDF         ?= 0		# Include HDF5 support (requires HDF5)
 ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
@@ -33,20 +33,27 @@ OUTFILE		?= $(app)
 # List all the application source files here
 GEN_SRC		?= src/runtime/model.cc src/mapper/mapper.cc src/runtime/initializer.cc src/runtime/optimizer.cc\
 		src/runtime/strategy.pb.cc src/runtime/strategy.cc $(app).cc
-GEN_HIP_SRC	?= src/ops/conv_2d.cu src/runtime/model.cu src/ops/pool_2d.cu src/ops/batch_norm.cu src/ops/linear.cu  \
+#GEN_HIP_SRC	?= src/ops/conv_2d.cu src/runtime/model.cu src/ops/pool_2d.cu src/ops/batch_norm.cu src/ops/linear.cu  \
 		src/ops/softmax.cu src/ops/concat.cu src/ops/flat.cu src/ops/embedding.cu src/ops/mse_loss.cu\
 		src/runtime/initializer_kernel.cu src/runtime/optimizer_kernel.cu src/runtime/accessor_kernel.cu\
 		src/runtime/cuda_helper.cu # .cu files
+		
+GEN_HIP_SRC	?= src/ops/conv_2d.cpp src/runtime/model.cpp src/ops/pool_2d.cpp src/ops/batch_norm.cpp src/ops/linear.cpp  \
+		src/ops/softmax.cpp src/ops/concat.cpp src/ops/flat.cpp src/ops/embedding.cpp src/ops/mse_loss.cpp\
+		src/runtime/initializer_kernel.cpp src/runtime/optimizer_kernel.cpp src/runtime/accessor_kernel.cpp\
+		src/runtime/cuda_helper.cpp # .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
-INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf/include -I/home/wwu/app/hipdnn/hipdnn/include -I/opt/rocm/hiprand/include
+INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf/include -I/home/wwu/app/hipdnn/hipdnn/include -I/opt/rocm/hiprand/include -I/opt/rocm/include/rocrand
 CC_FLAGS	?=
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
-LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
+#LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
+LD_FLAGS	?= -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
 # For Point and Rect typedefs
 CC_FLAGS	+= -std=c++11
 NVCC_FLAGS  += -std=c++11
+HIPCC_FLAGS  += -std=c++11
 ###########################################################################
 #
 #   Don't change anything below here
