@@ -157,9 +157,9 @@ OpMeta* Pool2D::init_task(const Task *task,
   Rect<4> rect_input, rect_output;
   rect_input = runtime->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
   rect_output = runtime->get_index_space_domain(ctx, task->regions[1].region.get_index_space());
-  checkCUDNN(cudnnCreateTensorDescriptor(&m->inputTensor));
-  checkCUDNN(cudnnCreateTensorDescriptor(&m->outputTensor));
-  checkCUDNN(cudnnCreatePoolingDescriptor(&m->poolDesc));
+  checkCUDNN(hipdnnCreateTensorDescriptor(&m->inputTensor));
+  checkCUDNN(hipdnnCreateTensorDescriptor(&m->outputTensor));
+  checkCUDNN(hipdnnCreatePoolingDescriptor(&m->poolDesc));
 
   int input_w = rect_input.hi[0] - rect_input.lo[0] + 1;
   int input_h = rect_input.hi[1] - rect_input.lo[1] + 1;
@@ -169,9 +169,9 @@ OpMeta* Pool2D::init_task(const Task *task,
         pool->inputs[0].pdim[2], input_h, input_w);
   printf("init pool (output): n(%d) c(%d) h(%d) w(%d)\n", pool->output.pdim[3],
         pool->output.pdim[2], output_h, output_w);
-  checkCUDNN(cudnnSetTensor4dDescriptor(m->inputTensor,
-                                        CUDNN_TENSOR_NCHW,
-                                        CUDNN_DATA_FLOAT,
+  checkCUDNN(hipdnnSetTensor4dDescriptor(m->inputTensor,
+                                        HIPDNN_TENSOR_NCHW,
+                                        HIPDNN_DATA_FLOAT,
                                         pool->inputs[0].pdim[3],
                                         pool->inputs[0].pdim[2],
                                         input_h,
@@ -183,16 +183,16 @@ OpMeta* Pool2D::init_task(const Task *task,
   if (pad_w != pool->padding_w)
     printf("Warning: changing pool_padding_w to satisfy output_w size\n");
   
-  cudnnPoolingMode_t mode;
+  hipdnnPoolingMode_t mode;
   if (pool->pool_type == POOL_MAX)
-    mode = CUDNN_POOLING_MAX;
+    mode = HIPDNN_POOLING_MAX;
   else {
     assert(pool->pool_type == POOL_AVG);
-    mode = CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
+    mode = HIPDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
   }
-  checkCUDNN(cudnnSetPooling2dDescriptor(m->poolDesc,
+  checkCUDNN(hipdnnSetPooling2dDescriptor(m->poolDesc,
                                          mode,
-                                         CUDNN_PROPAGATE_NAN,
+                                         HIPDNN_PROPAGATE_NAN,
                                          pool->kernel_h,
                                          pool->kernel_w,
                                          pad_h,//pool->padding_h,
@@ -200,7 +200,7 @@ OpMeta* Pool2D::init_task(const Task *task,
                                          pool->stride_h,
                                          pool->stride_w));
   int n, c, h, w;
-  checkCUDNN(cudnnGetPooling2dForwardOutputDim(m->poolDesc,
+  checkCUDNN(hipdnnGetPooling2dForwardOutputDim(m->poolDesc,
                                                m->inputTensor,
                                                &n, &c, &h, &w));
   assert(n == pool->output.pdim[3]);
@@ -208,9 +208,9 @@ OpMeta* Pool2D::init_task(const Task *task,
   assert(h == output_h);
   assert(w == output_w);
 
-  checkCUDNN(cudnnSetTensor4dDescriptor(m->outputTensor,
-                                        CUDNN_TENSOR_NCHW,
-                                        CUDNN_DATA_FLOAT,
+  checkCUDNN(hipdnnSetTensor4dDescriptor(m->outputTensor,
+                                        HIPDNN_TENSOR_NCHW,
+                                        HIPDNN_DATA_FLOAT,
                                         n, c, h, w));
   return m;
 }
@@ -268,11 +268,11 @@ void Pool2D::forward_task(const Task *task,
   float *output_ptr = acc_output.ptr(rect_output.lo);
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  checkCUDNN(hipdnnSetStream(m->handle.dnn, stream));
 
-  checkCUDNN(cudnnPoolingForward(m->handle.dnn, m->poolDesc,
+  checkCUDNN(hipdnnPoolingForward(m->handle.dnn, m->poolDesc,
                                  &alpha, m->inputTensor, input_ptr,
-                                 &beta, m->outputTensor, output_ptr));
+                                 &beta, m->outputTensor, output_ptr, 0));
 }
 
 void Pool2D::forward(const FFModel& ff)
@@ -345,9 +345,9 @@ void Pool2D::backward_task(const Task *task,
   }
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  checkCUDNN(hipdnnSetStream(m->handle.dnn, stream));
 
-  checkCUDNN(cudnnPoolingBackward(m->handle.dnn, m->poolDesc,
+  checkCUDNN(hipdnnPoolingBackward(m->handle.dnn, m->poolDesc,
                                   &alpha, m->outputTensor, output_ptr,
                                   m->outputTensor, output_grad_ptr,
                                   m->inputTensor, input_ptr,

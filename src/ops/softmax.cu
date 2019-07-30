@@ -86,14 +86,14 @@ OpMeta* Softmax::init_task(const Task *task,
   FFHandler handle = *((const FFHandler*) task->local_args);
   SoftmaxMeta* m = new SoftmaxMeta(handle);
 #ifndef DISABLE_COMPUTATION
-  checkCUDNN(cudnnCreateTensorDescriptor(&m->inputTensor));
+  checkCUDNN(hipdnnCreateTensorDescriptor(&m->inputTensor));
   //checkCUDNN(cudnnCreateTensorDescriptor(&m->outputTensor));
   assert(rect_input == rect_output);
   int input_c = rect_input.hi[0] - rect_input.lo[0] + 1;
   int input_n = rect_input.hi[1] - rect_input.lo[1] + 1;
-  checkCUDNN(cudnnSetTensor4dDescriptor(m->inputTensor,
-                                        CUDNN_TENSOR_NCHW,
-                                        CUDNN_DATA_FLOAT,
+  checkCUDNN(hipdnnSetTensor4dDescriptor(m->inputTensor,
+                                        HIPDNN_TENSOR_NCHW,
+                                        HIPDNN_DATA_FLOAT,
                                         input_n, input_c, 1, 1));
 #endif
   return m;
@@ -162,11 +162,11 @@ void Softmax::forward_task(const Task *task,
   }
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  checkCUDNN(hipdnnSetStream(m->handle.dnn, stream));
 
-  checkCUDNN(cudnnSoftmaxForward(m->handle.dnn,
-                                 CUDNN_SOFTMAX_ACCURATE,
-                                 CUDNN_SOFTMAX_MODE_CHANNEL,
+  checkCUDNN(hipdnnSoftmaxForward(m->handle.dnn,
+                                 HIPDNN_SOFTMAX_ACCURATE,
+                                 HIPDNN_SOFTMAX_MODE_CHANNEL,
                                  &alpha, m->inputTensor, input_ptr,
                                  &beta, m->inputTensor, output_ptr));
   if (softmax->profiling) {

@@ -157,32 +157,32 @@ OpMeta* BatchNorm::init_task(const Task *task,
   BatchNormMeta* m = new BatchNormMeta(handle);
 #ifndef DISABLE_COMPUTATION
   m->relu = bm->relu;
-  m->mode = CUDNN_BATCHNORM_SPATIAL;
+  m->mode = HIPDNN_BATCHNORM_SPATIAL;
 #if CUDNN_VERSION >= 7000
-  m->mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
+  m->mode = HIPDNN_BATCHNORM_SPATIAL_PERSISTENT;
 #endif
 
-  checkCUDNN(cudnnCreateTensorDescriptor(&m->inputTensor));
-  checkCUDNN(cudnnCreateTensorDescriptor(&m->outputTensor));
-  checkCUDNN(cudnnCreateTensorDescriptor(&m->biasTensor));
+  checkCUDNN(hipdnnCreateTensorDescriptor(&m->inputTensor));
+  checkCUDNN(hipdnnCreateTensorDescriptor(&m->outputTensor));
+  checkCUDNN(hipdnnCreateTensorDescriptor(&m->biasTensor));
 
   assert(rect_input == rect_output);
   int input_w = rect_input.hi[0] - rect_input.lo[0] + 1;
   int input_h = rect_input.hi[1] - rect_input.lo[1] + 1;
   int channel = bm->inputs[0].pdim[2];
-  checkCUDNN(cudnnSetTensor4dDescriptor(m->inputTensor,
-                                        CUDNN_TENSOR_NCHW,
-                                        CUDNN_DATA_FLOAT,
+  checkCUDNN(hipdnnSetTensor4dDescriptor(m->inputTensor,
+                                        HIPDNN_TENSOR_NCHW,
+                                        HIPDNN_DATA_FLOAT,
                                         bm->inputs[0].pdim[3],
                                         channel, input_h, input_w));
-  checkCUDNN(cudnnSetTensor4dDescriptor(m->outputTensor,
-                                        CUDNN_TENSOR_NCHW,
-                                        CUDNN_DATA_FLOAT,
+  checkCUDNN(hipdnnSetTensor4dDescriptor(m->outputTensor,
+                                        HIPDNN_TENSOR_NCHW,
+                                        HIPDNN_DATA_FLOAT,
                                         bm->inputs[0].pdim[3],
                                         channel, input_h, input_w));
-  checkCUDNN(cudnnSetTensor4dDescriptor(m->biasTensor,
-                                        CUDNN_TENSOR_NCHW,
-                                        CUDNN_DATA_FLOAT,
+  checkCUDNN(hipdnnSetTensor4dDescriptor(m->biasTensor,
+                                        HIPDNN_TENSOR_NCHW,
+                                        HIPDNN_DATA_FLOAT,
                                         1, channel, 1, 1));
   //float *runningMean, *runningVar, *saveMean, *saveVar;
   checkCUDA(cudaMalloc(&m->runningMean, sizeof(float) * channel));
@@ -190,9 +190,9 @@ OpMeta* BatchNorm::init_task(const Task *task,
   checkCUDA(cudaMalloc(&m->saveMean, sizeof(float) * channel));
   checkCUDA(cudaMalloc(&m->saveVar, sizeof(float) * channel));
   if (m->relu) {
-    checkCUDNN(cudnnCreateActivationDescriptor(&m->actiDesc));
-    checkCUDNN(cudnnSetActivationDescriptor(m->actiDesc, CUDNN_ACTIVATION_RELU,
-                                            CUDNN_PROPAGATE_NAN, 0.0));
+    checkCUDNN(hipdnnCreateActivationDescriptor(&m->actiDesc));
+    checkCUDNN(hipdnnSetActivationDescriptor(m->actiDesc, HIPDNN_ACTIVATION_RELU,
+                                            HIPDNN_PROPAGATE_NAN, 0.0, 0.0, 0.0));
     
   }
 #endif
@@ -335,14 +335,14 @@ void BatchNorm::forward_task(const Task *task,
   }
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  checkCUDNN(hipdnnSetStream(m->handle.dnn, stream));
   coord_t numChannels = bm->inputs[0].pdim[2];
   assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS>>>(m->runningMean, numChannels, 0.0f);
   assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS>>>(m->runningVar, numChannels, 0.0f);
-  checkCUDNN(cudnnBatchNormalizationForwardTraining(
-             m->handle.dnn, m->mode, &alpha, &beta, m->inputTensor, input_ptr,
-             m->outputTensor, output_ptr, m->biasTensor, scale_ptr, bias_ptr,
-             1.0, m->runningMean, m->runningVar, CUDNN_BN_MIN_EPSILON,
+  checkCUDNN(hipdnnBatchNormalizationForwardTraining(
+             m->handle.dnn, m->mode, &alpha, &beta, m->inputTensor, (void *)input_ptr,
+             m->outputTensor, (void *)output_ptr, m->biasTensor, (void *)scale_ptr, (void *)bias_ptr,
+             1.0, m->runningMean, m->runningVar, HIPDNN_BN_MIN_EPSILON,
              m->saveMean, m->saveVar));
   if (bm->profiling) {
     cudaEventRecord(t_end);
@@ -457,16 +457,16 @@ void BatchNorm::backward_task(const Task *task,
   }
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  checkCUDNN(hipdnnSetStream(m->handle.dnn, stream));
   if (m->relu) {
     int n = rect_output.volume();
     reluBackward<<<GET_BLOCKS(n), CUDA_NUM_THREADS>>>(output_grad_ptr, output_ptr, n);
   }
-  checkCUDNN(cudnnBatchNormalizationBackward(
+  checkCUDNN(hipdnnBatchNormalizationBackward(
              m->handle.dnn, m->mode, &alpha, &beta, &alpha, &beta,
              m->inputTensor, input_ptr, m->outputTensor, output_grad_ptr,
              m->inputTensor, input_grad_ptr, m->biasTensor, scale_ptr,
-             scale_grad_ptr, bias_grad_ptr, CUDNN_BN_MIN_EPSILON,
+             scale_grad_ptr, bias_grad_ptr, HIPDNN_BN_MIN_EPSILON,
              m->saveMean, m->saveVar));
   if (bm->profiling) {
     cudaEventRecord(t_end);

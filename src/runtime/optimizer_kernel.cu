@@ -79,7 +79,7 @@ void SGDOptimizer::update_task(const Task* task,
         TensorAccessorW<float, 1> accV(
             regions[2], task->regions[2], FID_DATA, ctx, runtime,
             true/*readOutput*/);
-        assert(accW.rect == accV.rect);
+    //    assert(accW.rect == accV.rect);
         v_ptr = accV.ptr;
       }
       break;
@@ -104,7 +104,7 @@ void SGDOptimizer::update_task(const Task* task,
         TensorAccessorW<float, 2> accV(
             regions[2], task->regions[2], FID_DATA, ctx, runtime,
             true/*readOutput*/);
-        assert(accW.rect == accV.rect);
+      //  assert(accW.rect == accV.rect);
         v_ptr = accV.ptr;
       }
       break;

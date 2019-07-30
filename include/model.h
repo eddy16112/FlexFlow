@@ -18,12 +18,12 @@
 //#include <hip/hip_runtime.h>
 #include <hipblas.h>
 #include <hiprand.h>
+#include <hipdnn.h>
 #include "legion.h"
 #include "config.h"
 #include "initializer.h"
 #include "optimizer.h"
 #include "accessor.h"
-#include <cudnn.h>
 #include <cuda_runtime.h>
 #include <unistd.h>
 
@@ -107,7 +107,7 @@ enum FieldIDs {
 };
 
 struct FFHandler {
-  cudnnHandle_t dnn;
+  hipdnnHandle_t dnn;
   hipblasHandle_t blas;
   void *workSpace;
   size_t workSpaceSize;
@@ -308,13 +308,13 @@ public:
 class Conv2DMeta : public OpMeta {
 public:
   Conv2DMeta(FFHandler handler) : OpMeta(handler) {};
-  cudnnTensorDescriptor_t inputTensor, biasTensor, outputTensor;
-  cudnnFilterDescriptor_t filterDesc;
-  cudnnActivationDescriptor_t actiDesc;
-  cudnnConvolutionDescriptor_t convDesc;
-  cudnnConvolutionFwdAlgo_t fwdAlgo;
-  cudnnConvolutionBwdFilterAlgo_t bwdFilterAlgo;
-  cudnnConvolutionBwdDataAlgo_t bwdDataAlgo;
+  hipdnnTensorDescriptor_t inputTensor, biasTensor, outputTensor;
+  hipdnnFilterDescriptor_t filterDesc;
+  hipdnnActivationDescriptor_t actiDesc;
+  hipdnnConvolutionDescriptor_t convDesc;
+  hipdnnConvolutionFwdAlgo_t fwdAlgo;
+  hipdnnConvolutionBwdFilterAlgo_t bwdFilterAlgo;
+  hipdnnConvolutionBwdDataAlgo_t bwdDataAlgo;
   bool relu, first_layer;
 };
 
@@ -350,9 +350,9 @@ public:
 class Pool2DMeta : public OpMeta {
 public:
   Pool2DMeta(FFHandler handle) : OpMeta(handle) {};
-  cudnnTensorDescriptor_t inputTensor, outputTensor;
-  cudnnActivationDescriptor_t actiDesc;
-  cudnnPoolingDescriptor_t poolDesc;
+  hipdnnTensorDescriptor_t inputTensor, outputTensor;
+  hipdnnActivationDescriptor_t actiDesc;
+  hipdnnPoolingDescriptor_t poolDesc;
   bool relu;
 };
 
@@ -388,9 +388,9 @@ public:
 class BatchNormMeta : public OpMeta {
 public:
   BatchNormMeta(FFHandler handle) : OpMeta(handle) {};
-  cudnnTensorDescriptor_t inputTensor, outputTensor, biasTensor;
-  cudnnActivationDescriptor_t actiDesc;
-  cudnnBatchNormMode_t mode;
+  hipdnnTensorDescriptor_t inputTensor, outputTensor, biasTensor;
+  hipdnnActivationDescriptor_t actiDesc;
+  hipdnnBatchNormMode_t mode;
   float *runningMean, *runningVar, *saveMean, *saveVar;
   bool relu;
 };
@@ -438,8 +438,8 @@ public:
 class LinearMeta : public OpMeta {
 public:
   LinearMeta(FFHandler handle) : OpMeta(handle) {};
-  cudnnTensorDescriptor_t outputTensor;
-  cudnnActivationDescriptor_t actiDesc;
+  hipdnnTensorDescriptor_t outputTensor;
+  hipdnnActivationDescriptor_t actiDesc;
   const float *one_ptr;
 };
 
@@ -531,7 +531,7 @@ class SoftmaxMeta : public OpMeta {
 public:
   SoftmaxMeta(FFHandler handle) : OpMeta(handle) {};
 #ifndef DISABLE_COMPUTATION
-  cudnnTensorDescriptor_t inputTensor;
+  hipdnnTensorDescriptor_t inputTensor;
 #endif
 };
 

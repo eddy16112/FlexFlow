@@ -29,7 +29,7 @@ FFHandler UtilityTasks::init_cuda_task(
   FFHandler handle;
   handle.workSpaceSize = workSpaceSize;
   checkCUDA(hipblasCreate(&handle.blas));
-  checkCUDNN(cudnnCreate(&handle.dnn));
+  checkCUDNN(hipdnnCreate(&handle.dnn));
   //std::set<Memory> memFB;
   //assert(memFB.size() == 1);
   //assert(memFB.begin()->kind() == Memory::GPU_FB_MEM);

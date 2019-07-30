@@ -192,13 +192,13 @@ OpMeta* Linear::init_task(const Task *task,
                        sizeof(float) * batch_size, cudaMemcpyHostToDevice));
   m->one_ptr = (const float*) fb_one_ptr;
   if (linear->activation == AC_MODE_RELU) {
-    checkCUDNN(cudnnCreateActivationDescriptor(&m->actiDesc));
-    checkCUDNN(cudnnSetActivationDescriptor(m->actiDesc, CUDNN_ACTIVATION_RELU,
-                                            CUDNN_PROPAGATE_NAN, 0.0));
-    checkCUDNN(cudnnCreateTensorDescriptor(&m->outputTensor));
-    checkCUDNN(cudnnSetTensor4dDescriptor(m->outputTensor,
-                                          CUDNN_TENSOR_NCHW,
-                                          CUDNN_DATA_FLOAT,
+    checkCUDNN(hipdnnCreateActivationDescriptor(&m->actiDesc));
+    checkCUDNN(hipdnnSetActivationDescriptor(m->actiDesc, HIPDNN_ACTIVATION_RELU,
+                                            HIPDNN_PROPAGATE_NAN, 0.0, 0.0, 0.0));
+    checkCUDNN(hipdnnCreateTensorDescriptor(&m->outputTensor));
+    checkCUDNN(hipdnnSetTensor4dDescriptor(m->outputTensor,
+                                          HIPDNN_TENSOR_NCHW,
+                                          HIPDNN_DATA_FLOAT,
                                           batch_size, out_dim, 1, 1));
   }
   return m;
@@ -295,7 +295,7 @@ void Linear::forward_task(const Task *task,
                         m->one_ptr, 1, &alpha,
                         acc_output.ptr, out_dim));
   if (linear->activation != AC_MODE_NONE) {
-    checkCUDNN(cudnnActivationForward(m->handle.dnn, m->actiDesc,
+    checkCUDNN(hipdnnActivationForward(m->handle.dnn, m->actiDesc,
         &alpha, m->outputTensor, acc_output.ptr,
         &beta, m->outputTensor, acc_output.ptr));
   }

@@ -13,8 +13,8 @@
 #ifndef DISABLE_COMPUTATION
 #define checkCUDNN(status) do {                                        \
     std::stringstream _error;                                          \
-    if (status != CUDNN_STATUS_SUCCESS) {                              \
-      _error << "CUDNN failure: " << cudnnGetErrorString(status);      \
+    if (status != HIPDNN_STATUS_SUCCESS) {                              \
+      _error << "CUDNN failure: " << hipdnnGetErrorString(status);      \
       FatalError(_error.str());                                        \
     }                                                                  \
 } while(0)
