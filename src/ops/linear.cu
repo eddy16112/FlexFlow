@@ -283,13 +283,13 @@ void Linear::forward_task(const Task *task,
   }
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
-  checkCUDA(cublasSgemm(m->handle.blas, CUBLAS_OP_T, CUBLAS_OP_N,
+  checkCUDA(hipblasSetStream(m->handle.blas, stream));
+  checkCUDA(hipblasSgemm(m->handle.blas, HIPBLAS_OP_T, HIPBLAS_OP_N,
                         out_dim, batch_size, in_dim,
                         &alpha, acc_kernel.ptr, in_dim,
                         acc_input.ptr, in_dim, &beta,
                         acc_output.ptr, out_dim));
-  checkCUDA(cublasSgemm(m->handle.blas, CUBLAS_OP_T, CUBLAS_OP_N,
+  checkCUDA(hipblasSgemm(m->handle.blas, HIPBLAS_OP_T, HIPBLAS_OP_N,
                         out_dim, batch_size, 1,
                         &alpha, acc_bias.ptr, 1,
                         m->one_ptr, 1, &alpha,
@@ -399,7 +399,7 @@ void Linear::backward_task(const Task *task,
   }
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
+  checkCUDA(hipblasSetStream(m->handle.blas, stream));
   if (linear->activation == AC_MODE_RELU) {
     reluBackward<<<GET_BLOCKS(acc_output.rect.volume()), CUDA_NUM_THREADS>>>(
         acc_output_grad.ptr, acc_output.ptr, acc_output.rect.volume());
@@ -408,19 +408,19 @@ void Linear::backward_task(const Task *task,
     assert(linear->activation == AC_MODE_NONE);
   }
   // Compute weight gradiant
-  checkCUDA(cublasSgemm(m->handle.blas, CUBLAS_OP_N, CUBLAS_OP_T,
+  checkCUDA(hipblasSgemm(m->handle.blas, HIPBLAS_OP_N, HIPBLAS_OP_T,
                         in_dim, out_dim, batch_size,
                         &alpha, acc_input.ptr, in_dim,
                         acc_output_grad.ptr, out_dim,
                         &beta, acc_kernel_grad.ptr, in_dim));
   // Compute bias gradiant
-  checkCUDA(cublasSgemv(m->handle.blas, CUBLAS_OP_N,
+  checkCUDA(hipblasSgemv(m->handle.blas, HIPBLAS_OP_N,
                         out_dim, batch_size,
                         &alpha, acc_output_grad.ptr, out_dim,
                         m->one_ptr, 1,
                         &beta, acc_bias_grad.ptr, 1));
   // Compute data gradiant
-  checkCUDA(cublasSgemm(m->handle.blas, CUBLAS_OP_N, CUBLAS_OP_N,
+  checkCUDA(hipblasSgemm(m->handle.blas, HIPBLAS_OP_N, HIPBLAS_OP_N,
                         in_dim, batch_size, out_dim,
                         &alpha, acc_kernel.ptr, in_dim,
                         acc_output_grad.ptr, out_dim,
@@ -458,11 +458,11 @@ void Linear::backward2_task(const Task *task,
   assert(acc_input.rect.lo[1] == acc_replica.rect.lo[1]);
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
+  checkCUDA(hipblasSetStream(m->handle.blas, stream));
   int num_replica = acc_replica.rect.hi[2] - acc_replica.rect.lo[2] + 1;
   const float *replica_ptr = acc_replica.ptr;
   for (int i = 1; i < num_replica; i++) {
-    checkCUDA(cublasSaxpy(m->handle.blas, acc_input.rect.volume(),
+    checkCUDA(hipblasSaxpy(m->handle.blas, acc_input.rect.volume(),
                           &alpha, replica_ptr, 1, acc_input.ptr, 1));
     replica_ptr += acc_input.rect.volume();
   }

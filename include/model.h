@@ -15,6 +15,8 @@
 
 #ifndef _FLEXFLOW_RUNTIME_H_
 #define _FLEXFLOW_RUNTIME_H_
+//#include <hip/hip_runtime.h>
+#include <hipblas.h>
 #include "legion.h"
 #include "config.h"
 #include "initializer.h"
@@ -107,7 +109,7 @@ enum FieldIDs {
 
 struct FFHandler {
   cudnnHandle_t dnn;
-  cublasHandle_t blas;
+  hipblasHandle_t blas;
   void *workSpace;
   size_t workSpaceSize;
 };

@@ -264,7 +264,7 @@ void Softmax::backward_task(const Task *task,
   }
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
+  checkCUDA(hipblasSetStream(m->handle.blas, stream));
 
   checkCUDA(cudaMemcpyAsync(input_grad_ptr, output_ptr,
                             rect_input_grad.volume() * sizeof(float),
@@ -274,7 +274,7 @@ void Softmax::backward_task(const Task *task,
 
   // Accouting for batch size in SGD
   float scalVal = 1.0f / static_cast<float>(num_images);
-  checkCUDA(cublasSscal(m->handle.blas, rect_input_grad.volume(),
+  checkCUDA(hipblasSscal(m->handle.blas, rect_input_grad.volume(),
                         &scalVal, input_grad_ptr, 1));
   if (softmax->profiling) {
     cudaEventRecord(t_end);

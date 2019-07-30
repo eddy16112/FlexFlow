@@ -28,7 +28,7 @@ FFHandler UtilityTasks::init_cuda_task(
   printf("workSpaceSize (%d MB)\n", workSpaceSize / 1024 / 1024);
   FFHandler handle;
   handle.workSpaceSize = workSpaceSize;
-  checkCUDA(cublasCreate(&handle.blas));
+  checkCUDA(hipblasCreate(&handle.blas));
   checkCUDNN(cudnnCreate(&handle.dnn));
   //std::set<Memory> memFB;
   //assert(memFB.size() == 1);

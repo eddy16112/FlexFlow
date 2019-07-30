@@ -39,11 +39,11 @@ GEN_HIP_SRC	?= src/ops/conv_2d.cu src/runtime/model.cu src/ops/pool_2d.cu src/op
 		src/runtime/cuda_helper.cu # .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
-INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf/include
+INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf/include -I/home/wwu/app/hipdnn/hipdnn/include
 CC_FLAGS	?=
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
-LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf
+LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas
 # For Point and Rect typedefs
 CC_FLAGS	+= -std=c++11
 NVCC_FLAGS  += -std=c++11
