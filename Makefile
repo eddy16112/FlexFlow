@@ -43,10 +43,11 @@ INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf/include -I/home/wwu/app/hipdnn/
 CC_FLAGS	?=
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
-LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
+LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn-cuda/hipdnn/lib -lhipdnn -L/home/wwu/app/hipblas/lib -lhipblas-d -L/opt/rocm/hiprand/lib -lhiprand
 # For Point and Rect typedefs
 CC_FLAGS	+= -std=c++11
 NVCC_FLAGS  += -std=c++11
+HIPCC_FLAGS  += -std=c++11
 ###########################################################################
 #
 #   Don't change anything below here
