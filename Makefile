@@ -13,10 +13,13 @@
 # limitations under the License.
 #
 
+LG_RT_DIR=/projects/legion/amd-hip/legion-hip/runtime
 ifndef LG_RT_DIR
 $(error LG_RT_DIR variable is not defined, aborting build)
 #LG_RT_DIR	?= legion/runtime
 endif
+
+CXX=clang++
 
 # Flags for directing the runtime makefile what to include
 DEBUG           ?= 1		# Include debugging symbols
@@ -44,12 +47,12 @@ GEN_HIP_SRC	?= src/ops/conv_2d.cpp src/runtime/model.cpp src/ops/pool_2d.cpp src
 		src/runtime/cuda_helper.cpp # .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
-INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf/include -I/home/wwu/app/hipdnn/hipdnn/include -I/opt/rocm/hiprand/include -I/opt/rocm/include/rocrand
+INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf-hipcc/include -I/home/wwu/app/hipdnn/hipdnn/include -I/opt/rocm/hiprand/include -I/opt/rocm/include/rocrand
 CC_FLAGS	?=
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
 #LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
-LD_FLAGS	?= -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
+LD_FLAGS	?= -L/home/wwu/app/protobuf-hipcc/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
 # For Point and Rect typedefs
 CC_FLAGS	+= -std=c++11
 NVCC_FLAGS  += -std=c++11

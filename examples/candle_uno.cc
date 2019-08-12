@@ -143,6 +143,7 @@ void top_level_task(const Task* task,
 
 void parse_input_args(char **argv, int argc, CandleConfig& config)
 {
+/*
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--dense-layers")) {
       std::stringstream ss(std::string(argv[++i]));
@@ -163,5 +164,6 @@ void parse_input_args(char **argv, int argc, CandleConfig& config)
       continue;
     }
   }
+*/
 }
 
