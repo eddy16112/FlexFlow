@@ -69,18 +69,18 @@ template<unsigned DIM, typename T>
 void print_tensor(const T* ptr, Rect<DIM> rect, const char* prefix)
 {
   // device synchronize to make sure the data are ready
-  checkCUDA(cudaDeviceSynchronize());
+  checkCUDA(hipDeviceSynchronize());
   T* host_ptr;
-  checkCUDA(cudaHostAlloc(&host_ptr, sizeof(T) * rect.volume(),
-                          cudaHostAllocPortable | cudaHostAllocMapped));
-  checkCUDA(cudaMemcpy(host_ptr, ptr, sizeof(T) * rect.volume(),
-                       cudaMemcpyDeviceToHost));
+  checkCUDA(hipHostAlloc((void **)&host_ptr, sizeof(T) * rect.volume(),
+                          hipHostMallocPortable | hipHostMallocMapped));
+  checkCUDA(hipMemcpy(host_ptr, ptr, sizeof(T) * rect.volume(),
+                       hipMemcpyDeviceToHost));
   int idx = 0;
   printf("%s", prefix);
   for (PointInRectIterator<DIM> it(rect); it(); it++, idx++) {
-    printf(" %.4lf", host_ptr[idx]);
+    printf(" %.4lf", (float)host_ptr[idx]);
   }
   printf("\n");
-  checkCUDA(cudaFreeHost(host_ptr));
+  checkCUDA(hipFreeHost(host_ptr));
 }
 #endif

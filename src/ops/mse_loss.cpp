@@ -15,7 +15,7 @@
  */
 
 #include "model.h"
-#include "cuda_helper.hpp"
+#include "cuda_helper.h"
 
 LegionRuntime::Logger::Category log_mse("mse");
 
@@ -59,6 +59,45 @@ void MSELoss::forward(const FFModel& model)
 {
 }
 
+struct PerfMetrics
+{
+  float train_loss;
+  int train_all, train_correct, test_all, test_correct, val_all, val_correct;
+};
+
+__global__
+void calc_loss(const float* logits,
+               const float* labels,
+               PerfMetrics* perf,
+               int batch_size,
+               int out_dim,
+               float scale)
+{
+  CUDA_KERNEL_LOOP(b, batch_size)
+  {
+    float max_val = 0.0f;
+    int true_label = -1, my_label = -1;
+    for (int i = 0; i < out_dim; i++) {
+      if (logits[b*out_dim+i] > max_val) {
+        max_val = logits[b*out_dim+i];
+        my_label = i;
+      }
+      if (labels[b*out_dim+i] > 0.9f) {
+  //      assert(true_label == -1);
+        true_label = i;
+      }
+    }
+  //  assert(true_label >= 0);
+    for (int i = 0; i < out_dim; i++) {
+      float diff = logits[b*out_dim+i] - labels[b*out_dim+i];
+      atomicAdd(&(perf->train_loss), scale * diff * diff);
+    }
+    atomicAdd(&(perf->train_all), 1);
+    if (true_label == my_label)
+      atomicAdd(&(perf->train_correct), 1);
+  }
+}
+
 __global__
 void mseloss_backward(float* logitsGrad,
                       const float* logits,
@@ -87,6 +126,8 @@ void MSELoss::backward_task(const Task *task,
       regions[2], task->regions[2], FID_DATA, ctx, runtime, false/*readOutput*/);
   assert(accLogits.rect == accLabels.rect);
   assert(accLogits.rect == accLogitsGrad.rect);
+  int batch_size = accLogits.rect.hi[1] - accLogits.rect.lo[1] + 1;
+  int out_dim = accLogits.rect.hi[0] - accLogits.rect.lo[0] + 1;
   float scale = 1.0f;
   switch (op->aggr_mode) {
     case AGGR_MODE_SUM:
@@ -99,10 +140,33 @@ void MSELoss::backward_task(const Task *task,
     default:
       assert(false);
   }
+
+  // Calculate loss
+  PerfMetrics* perf;
+  PerfMetrics perf_zc;
+  perf_zc.train_loss = 0.0f;
+  perf_zc.train_correct = perf_zc.train_all = 0;
+  perf_zc.test_correct = perf_zc.test_all = 0;
+  perf_zc.val_correct = perf_zc.val_all = 0;
+  
+  checkCUDA(hipMalloc(&perf, sizeof(PerfMetrics)));
+  checkCUDA(hipMemcpy(perf, &perf_zc, sizeof(PerfMetrics), hipMemcpyHostToDevice));
+  hipLaunchKernelGGL((calc_loss), dim3(GET_BLOCKS(batch_size)), dim3(CUDA_NUM_THREADS), 0, 0, 
+    accLogits.ptr, accLabels.ptr, perf, batch_size, out_dim, scale);
+  checkCUDA(hipMemcpy(&perf_zc, perf, sizeof(PerfMetrics), hipMemcpyDeviceToHost));
+  fprintf(stderr, "train_loss: %.4lf train_accuracy: %.2lf%%(%d/%d)\n",
+          perf_zc.train_loss,
+          perf_zc.train_correct * 100.0f / perf_zc.train_all, perf_zc.train_correct, perf_zc.train_all);
+  // Calculate backward
   hipLaunchKernelGGL((mseloss_backward), dim3(GET_BLOCKS(accLogits.rect.volume())), dim3(CUDA_NUM_THREADS), 0, 0, 
       accLogitsGrad.ptr, accLogits.ptr, accLabels.ptr,
       scale, accLogits.rect.volume());
   checkCUDA(hipDeviceSynchronize());
+  if (op->profiling) {
+    print_tensor<2, float>(accLabels.ptr, accLabels.rect, "[MSELoss:label]");
+    print_tensor<2, float>(accLogits.ptr, accLogits.rect, "[MSELoss:logit]");
+    print_tensor<2, float>(accLogitsGrad.ptr, accLogitsGrad.rect, "[MSELoss:logit_grad]");
+  }
 }
 
 void MSELoss::backward(const FFModel& model)
@@ -111,7 +175,9 @@ void MSELoss::backward(const FFModel& model)
   Context ctx = model.config.lg_ctx;
   Runtime* runtime = model.config.lg_hlr;
   IndexLauncher launcher(MSELOSS_BWD_TASK_ID, task_is,
-                         TaskArgument(this, sizeof(MSELoss)), argmap);
+                         TaskArgument(this, sizeof(MSELoss)), argmap,
+                         Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
+                         FFConfig::get_hash_id(std::string(name)));
   // regions[0]: _logit
   launcher.add_region_requirement(
       RegionRequirement(inputs[0].part, 0/*projection*/,

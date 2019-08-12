@@ -15,7 +15,7 @@
  */
 
 #include "model.h"
-#include "cuda_helper.hpp"
+#include "cuda_helper.h"
 
 Tensor FFModel::dense(std::string name,
                       const Tensor& input,
@@ -80,12 +80,12 @@ Linear::Linear(FFModel& model,
   // Create kernel tensor
   {
     const int dims[2] = {out_dim, in_dim};
-    kernel = model.create_weight<2>(dims, task_is, DT_FLOAT);
+    kernel = model.create_weight<2>(dims, task_is, DT_FLOAT, kernel_initializer);
   }
   // Create bias tensor
   if (use_bias) {
     const int dims[1] = {out_dim};
-    bias = model.create_weight<1>(dims, task_is, DT_FLOAT);
+    bias = model.create_weight<1>(dims, task_is, DT_FLOAT, bias_initializer);
   }
   // Compute partition bound for input
   Rect<2> input_rect = runtime->get_index_partition_color_space(
@@ -192,9 +192,21 @@ OpMeta* Linear::init_task(const Task *task,
   checkCUDA(hipMemcpy(fb_one_ptr, dram_one_ptr,
                        sizeof(float) * batch_size, hipMemcpyHostToDevice));
   m->one_ptr = (const float*) fb_one_ptr;
-  if (linear->activation == AC_MODE_RELU) {
+  if (linear->activation != AC_MODE_NONE) {
+    hipdnnActivationMode_t mode;
+    switch (linear->activation) {
+      case AC_MODE_RELU:
+        mode = HIPDNN_ACTIVATION_RELU;
+        break;
+      case AC_MODE_SIGMOID:
+        mode = HIPDNN_ACTIVATION_SIGMOID;
+        break;
+      default:
+        // Unsupported activation mode
+        assert(false);
+    }
     checkCUDNN(hipdnnCreateActivationDescriptor(&m->actiDesc));
-    checkCUDNN(hipdnnSetActivationDescriptor(m->actiDesc, HIPDNN_ACTIVATION_RELU,
+    checkCUDNN(hipdnnSetActivationDescriptor(m->actiDesc, mode,
                                             HIPDNN_PROPAGATE_NAN, 0.0, 0.0, 0.0));
     checkCUDNN(hipdnnCreateTensorDescriptor(&m->outputTensor));
     checkCUDNN(hipdnnSetTensor4dDescriptor(m->outputTensor,
@@ -307,6 +319,10 @@ void Linear::forward_task(const Task *task,
     hipEventDestroy(t_start);
     hipEventDestroy(t_end);
     printf("Linear forward time = %.2lfms\n", elapsed);
+    print_tensor<2, float>(acc_input.ptr, acc_input.rect, "[Linear:forward:input]");
+    print_tensor<2, float>(acc_kernel.ptr, acc_kernel.rect, "[Linear:forward:kernel]");
+    print_tensor<2, float>(acc_output.ptr, acc_output.rect, "[Linear:forward:output]");
+    checkCUDA(hipDeviceSynchronize());
   }
 }
 
@@ -344,6 +360,15 @@ void Linear::forward(const FFModel& ff)
   runtime->execute_index_space(ctx, launcher);
 }
 
+__global__
+void sigmoid_backward(float *grad_ptr, const float *output, int n)
+{
+  CUDA_KERNEL_LOOP(i, n)
+  {
+    grad_ptr[i] = grad_ptr[i] * output[i] * (1 - output[i]);
+  }
+}
+
 /*
   regions[0](I): input
   regions[1](O): replica_grad or input_grad
@@ -362,29 +387,41 @@ void Linear::backward_task(const Task *task,
   float alpha = 1.0f, beta = 0.0f;
   const Linear* linear = (Linear*) task->args;
   const LinearMeta* m = *((LinearMeta**) task->local_args);
+  float* input_grad = NULL;
   TensorAccessorR<float, 2> acc_input(
       regions[0], task->regions[0], FID_DATA, ctx, runtime);
-  TensorAccessorW<float, 3> acc_replica_grad(
-      regions[1], task->regions[1], FID_DATA, ctx, runtime,
-      false/*readOutput*/);
   TensorAccessorR<float, 2> acc_output(
       regions[2], task->regions[2], FID_DATA, ctx, runtime);
+  int in_dim = acc_input.rect.hi[0] - acc_input.rect.lo[0] + 1;
+  int batch_size = acc_input.rect.hi[1] - acc_input.rect.lo[1] + 1;
+  int out_dim = acc_output.rect.hi[0] - acc_output.rect.lo[0] + 1;
+  Domain domain = runtime->get_index_space_domain(
+      ctx, task->regions[1].region.get_index_space());
+  if (domain.get_dim() == 3) {
+    TensorAccessorW<float, 3> acc_replica_grad(
+        regions[1], task->regions[1], FID_DATA, ctx, runtime,
+        false/*readOutput*/);
+    assert(acc_replica_grad.rect.volume() == in_dim * batch_size);
+    input_grad = acc_replica_grad.ptr;
+  } else {
+    TensorAccessorW<float, 2> acc_replica_grad(
+        regions[1], task->regions[1], FID_DATA, ctx, runtime,
+        false/*readOutput*/);
+    assert(acc_replica_grad.rect.volume() == in_dim * batch_size);
+    input_grad = acc_replica_grad.ptr;
+  }
   TensorAccessorW<float, 2> acc_output_grad(
       regions[3], task->regions[3], FID_DATA, ctx, runtime,
       true/*readOutput*/);
   TensorAccessorR<float, 2> acc_kernel(
       regions[4], task->regions[4], FID_DATA, ctx, runtime);
-  TensorAccessorW<float, 3> acc_kernel_grad(
+  TensorAccessorW<float, 2> acc_kernel_grad(
       regions[5], task->regions[5], FID_DATA, ctx, runtime,
       false/*readOutput*/);
-  TensorAccessorW<float, 2> acc_bias_grad(
+  TensorAccessorW<float, 1> acc_bias_grad(
       regions[6], task->regions[6], FID_DATA, ctx, runtime,
       false/*readOutput*/);
   // make sure the sizes match
-  int in_dim = acc_input.rect.hi[0] - acc_input.rect.lo[0] + 1;
-  int out_dim = acc_output.rect.hi[0] - acc_output.rect.lo[0] + 1;
-  int batch_size = acc_input.rect.hi[1] - acc_input.rect.lo[1] + 1;
-  assert(acc_replica_grad.rect.volume() == in_dim * batch_size);
   assert(acc_output.rect.volume() == out_dim * batch_size);
   assert(acc_output_grad.rect.volume() == out_dim * batch_size);
   assert(acc_kernel.rect.volume() == in_dim * out_dim);
@@ -402,8 +439,11 @@ void Linear::backward_task(const Task *task,
   if (linear->activation == AC_MODE_RELU) {
     hipLaunchKernelGGL((reluBackward), dim3(GET_BLOCKS(acc_output.rect.volume())), dim3(CUDA_NUM_THREADS), 0, 0, 
         acc_output_grad.ptr, acc_output.ptr, acc_output.rect.volume());
+  } else if (linear->activation == AC_MODE_SIGMOID) {
+    hipLaunchKernelGGL((sigmoid_backward), dim3(GET_BLOCKS(acc_output.rect.volume())), dim3(CUDA_NUM_THREADS), 0, 0, 
+        acc_output_grad.ptr, acc_output.ptr, acc_output.rect.volume());
   } else {
-    // TODO: only support relu or none activation
+    // TODO: only support relu and sigmoid for now
     assert(linear->activation == AC_MODE_NONE);
   }
   // Compute weight gradiant
@@ -423,7 +463,7 @@ void Linear::backward_task(const Task *task,
                         in_dim, batch_size, out_dim,
                         &alpha, acc_kernel.ptr, in_dim,
                         acc_output_grad.ptr, out_dim,
-                        &beta, acc_replica_grad.ptr, in_dim));
+                        &beta, input_grad, in_dim));
   if (linear->profiling) {
     hipEventRecord(t_end);
     checkCUDA(hipEventSynchronize(t_end));
@@ -432,6 +472,11 @@ void Linear::backward_task(const Task *task,
     hipEventDestroy(t_start);
     hipEventDestroy(t_end);
     printf("Linear backward time = %.2lfms\n", elapsed);
+    print_tensor<2, float>(acc_output_grad.ptr, acc_output_grad.rect, "[Linear:backward:output_grad]");
+    print_tensor<2, float>(acc_kernel_grad.ptr, acc_kernel_grad.rect, "[Linear:backward:kernel_grad]");
+    print_tensor<1, float>(acc_bias_grad.ptr, acc_bias_grad.rect, "[Linear:backward:bias_grad]");
+    print_tensor<2, float>(input_grad, acc_input.rect, "[Linear:backward:input_grad]");
+    checkCUDA(hipDeviceSynchronize());
   }
 }
 

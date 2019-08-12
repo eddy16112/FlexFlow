@@ -266,6 +266,7 @@ template<int NDIM>
 Tensor FFModel::create_weight(const int dims[],
                               const IndexSpaceT<2>& part_is,
                               DataType data_type,
+                              Initializer* initializer,
                               bool create_grad)
 {
   Context ctx = config.lg_ctx;
@@ -314,24 +315,30 @@ Tensor FFModel::create_weight(const int dims[],
     weight.part = runtime->get_logical_partition(
         ctx, weight.region, ip);
   }
+  // Step 2: initialize region
+  if (initializer == NULL) {
+    initializer = new GlorotUniform();
+    initializer->init(ctx, runtime, &weight);
+  } else {
+    initializer->init(ctx, runtime, &weight);
+  }
   // Step 3: backward region
   if (create_grad) {
-    Point<NDIM+1> hi;
+    Point<NDIM> hi;
     for (int i = 0; i < NDIM; i++)
       hi[i] = dims[NDIM-1-i]-1;
-    hi[NDIM] = num_par_n-1;
-    Rect<NDIM+1> rect(Point<NDIM+1>::ZEROES(), hi);
-    IndexSpaceT<NDIM+1> is = runtime->create_index_space(ctx, rect);
+    hi[NDIM-1] = num_par_n * dims[0] -1;
+    Rect<NDIM> rect(Point<NDIM>::ZEROES(), hi);
+    IndexSpaceT<NDIM> is = runtime->create_index_space(ctx, rect);
     weight.region_grad = runtime->create_logical_region(ctx, is, fs);
     hi[NDIM-1] = dims[0] / num_par_c - 1;
-    hi[NDIM] = 0;
-    Rect<NDIM+1> extent(Point<NDIM+1>::ZEROES(), hi);
-    Transform<NDIM+1, 2> transform;
-    for (int i = 0; i < NDIM+1; i++)
+    Rect<NDIM> extent(Point<NDIM>::ZEROES(), hi);
+    Transform<NDIM, 2> transform;
+    for (int i = 0; i < NDIM; i++)
       for (int j = 0; j < 2; j++)
         transform[i][j] = 0;
     transform[NDIM-1][0] = dims[0] / num_par_c;
-    transform[NDIM][1] = 1;
+    transform[NDIM-1][1] = dims[0];
     IndexPartition ip = runtime->create_partition_by_restriction(
         ctx, is, part_is, transform, extent);
     assert(runtime->is_index_partition_complete(ctx, ip));
@@ -530,6 +537,7 @@ void Op::prefetch(const FFModel& ff)
   // TODO: perform prefetch for performance imporvement
 }
 
+#ifdef DEADCODE
 // ========================================================
 // class DataLoader
 // ========================================================
@@ -583,6 +591,7 @@ bool DataLoader::shuffle_samples(void)
   std::random_shuffle(samples.begin(), samples.end());
   return true;
 }
+#endif
 
 // ========================================================
 // class FFConfig
@@ -590,7 +599,8 @@ bool DataLoader::shuffle_samples(void)
 
 // Default Config Parameters
 struct DefaultConfig {
-  const static int epochs = 10;
+  const static int epochs = 1;
+  const static int iterations = 1;
   const static int batchSize = 64;
   const static int inputHeight = 224;
   const static int inputWidth = 224;
@@ -606,6 +616,7 @@ struct DefaultConfig {
 FFConfig::FFConfig()
 {
   epochs = DefaultConfig::epochs;
+  iterations = DefaultConfig::iterations;
   batchSize = DefaultConfig::batchSize;
   inputHeight = DefaultConfig::inputHeight;
   inputWidth = DefaultConfig::inputWidth;
@@ -627,6 +638,10 @@ void FFConfig::parse_args(char **argv, int argc)
   {
     if ((!strcmp(argv[i], "-e")) || (!strcmp(argv[i], "--epochs"))) {
       epochs = atoi(argv[++i]);
+      continue;
+    }
+    if ((!strcmp(argv[i], "-i")) || (!strcmp(argv[i], "--iterations"))) {
+      iterations = atoi(argv[++i]);
       continue;
     }
     if ((!strcmp(argv[i], "-b")) || (!strcmp(argv[i], "--batch-size"))) {
@@ -938,6 +953,9 @@ int main(int argc, char** argv)
     Runtime::preregister_task_variant<UtilityTasks::dummy_task>(registrar, "dummy_task");
   }
 
+  // Register custom tasks
+  register_custom_tasks();
+
   Runtime::add_registration_callback(update_mappers);
   return Runtime::start(argc, argv);
 }
@@ -952,7 +970,7 @@ template Tensor FFModel::create_tensor<2>(const int* dims, const IndexSpaceT<2>&
 template Tensor FFModel::create_tensor<3>(const int* dims, const IndexSpaceT<3>& part_is, DataType data_type, bool create_grad);
 template Tensor FFModel::create_tensor<4>(const int* dims, const IndexSpaceT<4>& part_is, DataType data_type, bool create_grad);
 
-template Tensor FFModel::create_weight<2>(const int* dims, const IndexSpaceT<2>& part_is, DataType data_type, bool create_grad);
-template Tensor FFModel::create_weight<1>(const int* dims, const IndexSpaceT<2>& part_is, DataType data_type, bool create_grad);
+template Tensor FFModel::create_weight<2>(const int* dims, const IndexSpaceT<2>& part_is, DataType data_type, Initializer* initializer, bool create_grad);
+template Tensor FFModel::create_weight<1>(const int* dims, const IndexSpaceT<2>& part_is, DataType data_type, Initializer* initializer, bool create_grad);
 
 template Tensor FFModel::create_replica<3>(const int* dims, const IndexSpaceT<2>& part_is, DataType data_type);

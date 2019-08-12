@@ -1,7 +1,7 @@
 #include "hip/hip_runtime.h"
 #include "accessor.h"
 #include "model.h"
-#include "cuda_helper.hpp"
+#include "cuda_helper.h"
 
 template<typename DT, int dim>
 TensorAccessorR<DT, dim>::TensorAccessorR(PhysicalRegion region,
@@ -55,8 +55,13 @@ TensorAccessorW<DT, dim>::TensorAccessorW(PhysicalRegion region,
 template class TensorAccessorR<float, 1>;
 template class TensorAccessorR<float, 2>;
 template class TensorAccessorR<float, 3>;
+template class TensorAccessorR<int, 1>;
 template class TensorAccessorR<int, 2>;
+template class TensorAccessorR<int, 3>;
 
 template class TensorAccessorW<float, 1>;
 template class TensorAccessorW<float, 2>;
 template class TensorAccessorW<float, 3>;
+template class TensorAccessorW<int, 1>;
+template class TensorAccessorW<int, 2>;
+template class TensorAccessorW<int, 3>;

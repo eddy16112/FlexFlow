@@ -1,5 +1,5 @@
 #include "hip/hip_runtime.h"
-#include "cuda_helper.hpp"
+#include "cuda_helper.h"
 __global__
 void scale_kernel(float* ptr, coord_t size, float a, float b)
 {
@@ -29,11 +29,11 @@ void assign_kernel(DT* ptr, coord_t size, DT value)
 }
 
 __global__
-void reluBackward(float *grad_ptr, const float *input, int n)
+void reluBackward(float *grad_ptr, const float *output, int n)
 {
   CUDA_KERNEL_LOOP(i, n)
   {
-    grad_ptr[i] = (input[i] > 0.0f) ? grad_ptr[i] : 0;
+    grad_ptr[i] = (output[i] > 0.0f) ? grad_ptr[i] : 0;
   }
 }
 
@@ -56,7 +56,6 @@ void apply_add_with_scale(float *data_ptr, const float *grad_ptr,
   }
 }
 
-__host__
 void updateGAS(float* para_ptr, const float* grad_ptr, size_t replica_size,
                int num_replica, float learning_rate)
 {

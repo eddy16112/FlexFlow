@@ -13,10 +13,10 @@
 # limitations under the License.
 #
 
-LG_RT_DIR=/projects/legion/amd-hip/legion-hip/runtime
+#LG_RT_DIR=/projects/legion/amd-hip/legion-hip/runtime
 ifndef LG_RT_DIR
-$(error LG_RT_DIR variable is not defined, aborting build)
-#LG_RT_DIR	?= legion/runtime
+#$(error LG_RT_DIR variable is not defined, aborting build)
+LG_RT_DIR	?= legion/runtime
 endif
 
 CXX=clang++
@@ -39,12 +39,12 @@ GEN_SRC		?= src/runtime/model.cc src/mapper/mapper.cc src/runtime/initializer.cc
 #GEN_HIP_SRC	?= src/ops/conv_2d.cu src/runtime/model.cu src/ops/pool_2d.cu src/ops/batch_norm.cu src/ops/linear.cu  \
 		src/ops/softmax.cu src/ops/concat.cu src/ops/flat.cu src/ops/embedding.cu src/ops/mse_loss.cu\
 		src/runtime/initializer_kernel.cu src/runtime/optimizer_kernel.cu src/runtime/accessor_kernel.cu\
-		src/runtime/cuda_helper.cu # .cu files
+		src/runtime/cuda_helper.cu $(app).cu# .cu files
 		
 GEN_HIP_SRC	?= src/ops/conv_2d.cpp src/runtime/model.cpp src/ops/pool_2d.cpp src/ops/batch_norm.cpp src/ops/linear.cpp  \
 		src/ops/softmax.cpp src/ops/concat.cpp src/ops/flat.cpp src/ops/embedding.cpp src/ops/mse_loss.cpp\
 		src/runtime/initializer_kernel.cpp src/runtime/optimizer_kernel.cpp src/runtime/accessor_kernel.cpp\
-		src/runtime/cuda_helper.cpp # .cu files
+		src/runtime/cuda_helper.cpp $(app).cpp# .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
 INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf-hipcc/include -I/home/wwu/app/hipdnn/hipdnn/include -I/opt/rocm/hiprand/include -I/opt/rocm/include/rocrand

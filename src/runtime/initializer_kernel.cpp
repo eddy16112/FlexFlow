@@ -17,7 +17,7 @@
 #include "initializer.h"
 #include "accessor.h"
 #include "model.h"
-#include "cuda_helper.hpp"
+#include "cuda_helper.h"
 #include <ctime>
 
 void UniformInitializer::init_task(const Task* task,
@@ -33,7 +33,7 @@ void UniformInitializer::init_task(const Task* task,
   UniformInitializer* initializer = (UniformInitializer*) task->args;
   hiprandGenerator_t gen;
   hiprandCreateGenerator(&gen, HIPRAND_RNG_PSEUDO_DEFAULT);
-  fprintf(stderr, "seed = %d\n", initializer->seed);
+  //fprintf(stderr, "seed = %d\n", initializer->seed);
   hiprandSetPseudoRandomGeneratorSeed(gen, initializer->seed);
   checkCUDA(hiprandGenerateUniform(gen, accW.ptr, accW.rect.volume()));
   hipLaunchKernelGGL((scale_kernel), dim3(GET_BLOCKS(accW.rect.volume())), dim3(CUDA_NUM_THREADS), 0, 0, 
@@ -79,10 +79,10 @@ void NormInitializer::init_task(const Task* task,
   hiprandGenerator_t gen;
   hiprandCreateGenerator(&gen, HIPRAND_RNG_PSEUDO_DEFAULT);
   NormInitializer* initializer = (NormInitializer*) task->args;
-  fprintf(stderr, "seed = %d\n", initializer->seed);
+  //fprintf(stderr, "seed = %d\n", initializer->seed);
   hiprandSetPseudoRandomGeneratorSeed(gen, initializer->seed);
-  fprintf(stderr, "domain.volume() = %zu mean(%.4lf) var(%.4lf)\n",
-      domain.get_volume(), initializer->mean, initializer->stddev);
+  //fprintf(stderr, "domain.volume() = %zu mean(%.4lf) var(%.4lf)\n",
+  //    domain.get_volume(), initializer->mean, initializer->stddev);
   checkCUDA(hiprandGenerateNormal(gen, w, domain.get_volume(),
       initializer->mean, initializer->stddev));
   checkCUDA(hipDeviceSynchronize());

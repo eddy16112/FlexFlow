@@ -29,7 +29,8 @@ Concat::Concat(FFModel& model,
                const std::string& pcname, 
                int _n, const Tensor* _tensors,
                int _axis)
- : Op(pcname, _n, _tensors), axis(_axis)
+ : Op(pcname, _n, _tensors), axis(_axis),
+   profiling(model.config.profiling)
 {
   // Retrive the task indexspace for the op
   task_is = model.get_or_create_task_is(pcname);
@@ -38,9 +39,19 @@ Concat::Concat(FFModel& model,
   Runtime* runtime = model.config.lg_hlr;
   Domain domain = runtime->get_index_space_domain(ctx, task_is);
   FieldSpace fs = model.config.field_space;
-  int dims[MAX_DIM];
-  for (int i = 0; i < domain.get_dim(); i++)
-    dims[i] = domain.hi()[i] - domain.lo()[i] + 1;
+  int dims[MAX_DIM], num_dim = inputs[0].numDim;
+  assert(num_dim == domain.get_dim());
+  for (int i = 0; i < num_dim; i++)
+    dims[i] = inputs[0].adim[num_dim-1-i];
+  for (int i = 1; i < numInputs; i++)
+    for (int j = 0; j < num_dim; j++) {
+      if (j != axis)
+        assert(inputs[i].adim[num_dim-1-j] == dims[j]);
+      else
+        dims[j] += inputs[i].adim[num_dim-1-j];
+    }
+  for (int i = 0; i < num_dim; i++)
+    printf("concat: dim[%d] = %d\n", i, dims[i]);
   switch (domain.get_dim()) {
     case 1:
     {
@@ -209,20 +220,22 @@ void Concat::forward_task(const Task *task,
                           Context ctx, Runtime *runtime)
 {
   const Concat* cc = (Concat*) task->args;
+  // Note that our internal axis index ordering is opposite to other frameworks
+  int axis = cc->output.numDim - 1 - cc->axis;
   assert(regions.size() == cc->numInputs + 1);
   assert(task->regions.size() == cc->numInputs + 1);
   float *output;
   const float *inputs[MAX_NUM_INPUTS];
   int num_blocks = 1, output_blk_size = 1, input_blk_sizes[MAX_NUM_INPUTS];
   for (int d = 0; d < cc->output.numDim; d++) {
-    if (d <= cc->axis)
+    if (d <= axis)
       output_blk_size *= cc->output.adim[d];
     else
       num_blocks *= cc->output.adim[d];
   }
   for (int i = 0; i < cc->numInputs; i++) {
     input_blk_sizes[i] = 1;
-    for (int d = 0; d < cc->axis; d++)
+    for (int d = 0; d <= axis; d++)
       input_blk_sizes[i] *= cc->inputs[i].adim[d];
   }
   assert(cc->numInputs <= MAX_NUM_INPUTS);
@@ -266,6 +279,10 @@ void Concat::forward_task(const Task *task,
     output += input_blk_sizes[i];
   }
   checkCUDA(cudaDeviceSynchronize());
+  if (cc->profiling) {
+    Rect<2> rect(Point<2>(0, 0), Point<2>(output_blk_size-1, domain.get_volume() / output_blk_size - 1));
+    print_tensor<2, float>(output - output_blk_size, rect, "[Concat:forward:output]");
+  }
 #ifdef DEADCODE
   const AccessorWO<float, 3> acc_output(regions[0], FID_DATA);
   Rect<3> rect_output;
@@ -328,20 +345,22 @@ void Concat::backward_task(const Task *task,
                            Context ctx, Runtime *runtime)
 {
   const Concat* cc = (Concat*) task->args;
+  // Note that our internal axis index ordering is opposite to other frameworks
+  int axis = cc->output.numDim - 1 - cc->axis;
   assert(regions.size() == cc->numInputs + 1);
   assert(task->regions.size() == cc->numInputs + 1);
   const float *output_grad;
   float *input_grads[MAX_NUM_INPUTS];
   int num_blocks = 1, output_blk_size = 1, input_blk_sizes[MAX_NUM_INPUTS];
   for (int d = 0; d < cc->output.numDim; d++) {
-    if (d <= cc->axis)
+    if (d <= axis)
       output_blk_size *= cc->output.adim[d];
     else
       num_blocks *= cc->output.adim[d];
   }
   for (int i = 0; i < cc->numInputs; i++) {
     input_blk_sizes[i] = 1;
-    for (int d = 0; d < cc->axis; d++)
+    for (int d = 0; d <= axis; d++)
       input_blk_sizes[i] *= cc->inputs[i].adim[d];
   }
   assert(cc->numInputs <= MAX_NUM_INPUTS);
@@ -385,6 +404,13 @@ void Concat::backward_task(const Task *task,
     output_grad += input_blk_sizes[i];
   }
   checkCUDA(cudaDeviceSynchronize());
+  if (cc->profiling) {
+    int batch_size = domain.get_volume() / output_blk_size;
+    Rect<2> output_rect(Point<2>(0, 0), Point<2>(output_blk_size-1, batch_size - 1));
+    Rect<2> input_rect(Point<2>(0, 0), Point<2>(input_blk_sizes[0]-1, batch_size - 1));
+    print_tensor<2, float>(output_grad - output_blk_size, output_rect, "[Concat:forward:output]");
+    print_tensor<2, float>(input_grads[0], input_rect, "[Concat:forward:input0]");
+  }
 #ifdef DEADCODE
   const AccessorRO<float, 3> acc_output(regions[0], FID_DATA);
   Rect<3> rect_output;
