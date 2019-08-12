@@ -74,6 +74,15 @@ enum TaskIDs {
   ZERO_INIT_TASK_ID,
   UNIFORM_INIT_TASK_ID,
   NORMAL_INIT_TASK_ID,
+  // Custom tasks
+  CUSTOM_TASK_ID_1,
+  CUSTOM_TASK_ID_2,
+  CUSTOM_TASK_ID_3,
+  CUSTOM_TASK_ID_4,
+  CUSTOM_TASK_ID_5,
+  CUSTOM_TASK_ID_6,
+  CUSTOM_TASK_ID_7,
+  CUSTOM_TASK_ID_8,
 };
 
 enum ActiMode {
@@ -238,6 +247,7 @@ public:
   Tensor create_weight(const int* dims,
                        const IndexSpaceT<2>& part_is,
                        DataType data_type,
+                       Initializer* initializer,
                        bool create_grad = true);
   template<int NDIM>
   Tensor create_replica(const int* dims,
@@ -558,6 +568,7 @@ public:
 public:
   int axis;
   IndexSpace task_is;
+  bool profiling;
 };
 
 class ConcatMeta : public OpMeta {
@@ -609,6 +620,7 @@ public:
                                     Context ctx, Runtime *runtime);
 };
 
+#ifdef DEADCODE
 struct Sample {
   int label;
   char file[MAX_FILE_LENGTH];
@@ -629,10 +641,16 @@ public:
   std::vector<Sample> samples;
   std::vector<Sample>::const_iterator sampleIter;
 };
+#endif
 
 void top_level_task(const Task* task,
                     const std::vector<PhysicalRegion>& regions,
                     Context ctx, Runtime* runtime);
 
+void data_load_task(const Task* task,
+                    const std::vector<PhysicalRegion>& regions,
+                    Context ctx, Runtime* runtime);
+
+void register_custom_tasks();
 #endif//_FLEXFLOW_RUNTIME_H_
 

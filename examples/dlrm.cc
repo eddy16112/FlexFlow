@@ -13,22 +13,13 @@
  * limitations under the License.
  */
 
-#include "model.h"
+#include "dlrm.h"
 #include <sstream>
+#include <math.h>
 
 using namespace Legion;
 
 LegionRuntime::Logger::Category log_app("DLRM");
-
-struct DLRMConfig {
-  DLRMConfig(void)
-  : sparse_feature_size(2), sigmoid_bot(-1), sigmoid_top(-1),
-    loss_threshold(0.0f), arch_interaction_op("dot") {}
-  int sparse_feature_size, sigmoid_bot, sigmoid_top;
-  float loss_threshold;
-  std::vector<int> embedding_size, mlp_bot, mlp_top;
-  std::string arch_interaction_op;
-};
 
 void parse_input_args(char **argv, int argc, DLRMConfig& apConfig);
 
@@ -42,7 +33,7 @@ Tensor create_mlp(FFModel* model, const Tensor& input,
     std_dev = sqrt(2.0f / ln[i+1]);
     Initializer* bias_init = new NormInitializer(std::rand(), 0, std_dev);
     ActiMode activation = i == sigmoid_layer ? AC_MODE_SIGMOID : AC_MODE_RELU;
-    t = model->linear("linear", t, ln[i+1], activation, true/*bias*/, weight_init, bias_init);
+    t = model->dense("linear", t, ln[i+1], activation, true/*bias*/, weight_init, bias_init);
   }
   return t;
 }
@@ -133,7 +124,7 @@ void top_level_task(const Task* task,
     ly.push_back(create_emb(&ff, sparse_inputs[i], input_dim, output_dim));
   }
   Tensor z = interact_features(&ff, x, ly, dlrmConfig.arch_interaction_op);
-  Tensor p = create_mlp(&ff, z, dlrmConfig.mlp_top, dlrmConfig.sigmoid_top);
+  Tensor p = create_mlp(&ff, z, dlrmConfig.mlp_top, dlrmConfig.mlp_top.size() - 2);
   if (dlrmConfig.loss_threshold > 0.0f && dlrmConfig.loss_threshold < 1.0f) {
     // TODO: implement clamp
     assert(false);
@@ -142,8 +133,11 @@ void top_level_task(const Task* task,
   // Use SGD Optimizer
   ff.optimizer = new SGDOptimizer(&ff, 0.01f);
   ff.init_layers();
+  // Data Loader
+  DataLoader data_loader(ff, dlrmConfig, sparse_inputs, dense_input, label);
   for (int epoch = 0; epoch < ffConfig.epochs; epoch++) {
-    for (int iter = 0; iter < ffConfig.numIterations; iter++) {
+    for (int iter = 0; iter < ffConfig.iterations; iter++) {
+      data_loader.load_next_batch(ff);
       ff.forward();
       ff.zero_gradients();
       ff.backward();
@@ -162,6 +156,7 @@ void parse_input_args(char **argv, int argc, DLRMConfig& config)
     if (!strcmp(argv[i], "--arch-embedding-size")) {
       std::stringstream ss(std::string(argv[++i]));
       std::string word;
+      config.embedding_size.clear();
       while (std::getline(ss, word, '-')) {
         config.embedding_size.push_back(std::stoi(word));
       }
@@ -170,6 +165,7 @@ void parse_input_args(char **argv, int argc, DLRMConfig& config)
     if (!strcmp(argv[i], "--arch-mlp-bot")) {
       std::stringstream ss(std::string(argv[++i]));
       std::string word;
+      config.mlp_bot.clear();
       while (std::getline(ss, word, '-')) {
         config.mlp_bot.push_back(std::stoi(word));
       }
@@ -178,6 +174,7 @@ void parse_input_args(char **argv, int argc, DLRMConfig& config)
     if (!strcmp(argv[i], "--arch-mlp-top")) {
       std::stringstream ss(std::string(argv[++i]));
       std::string word;
+      config.mlp_top.clear();
       while (std::getline(ss, word, '-')) {
         config.mlp_top.push_back(std::stoi(word));
       }
@@ -198,5 +195,133 @@ void parse_input_args(char **argv, int argc, DLRMConfig& config)
     if (!strcmp(argv[i], "--arch-interaction-op")) {
       config.arch_interaction_op = std::string(argv[++i]);
     }
+  }
+}
+
+DataLoader::DataLoader(FFModel& ff,
+                       const DLRMConfig& dlrm,
+                       const std::vector<Tensor>& _sparse_inputs,
+                       Tensor _dense_input, Tensor _label)
+{
+  int num_samples;
+  if (dlrm.dataset_path == "") {
+    log_app.print("Use random dataset...");
+    num_samples = 10;
+  } else {
+    assert(false);
+    log_app.print("Start loading dataset from %s", dlrm.dataset_path.c_str());
+    log_app.print("Finish loading dataset from %s", dlrm.dataset_path.c_str());
+  }
+  for (size_t i = 0; i < _sparse_inputs.size(); i++) {
+    const int dims[] = {num_samples, 1};
+    Tensor input = ff.create_tensor<2>(dims, "", DT_INT32);
+    full_sparse_inputs.push_back(input);
+    batch_sparse_inputs.push_back(_sparse_inputs[i]);
+  }
+  {
+    batch_dense_input = _dense_input;
+    const int dims[] = {num_samples, dlrm.mlp_bot[0]};
+    full_dense_input = ff.create_tensor<2>(dims, "", DT_FLOAT);
+  }
+  {
+    batch_label = _label;
+    const int dims[] = {num_samples, 2};
+    full_label = ff.create_tensor<2>(dims, "", DT_FLOAT);
+  }
+}
+
+void DataLoader::load_next_batch(FFModel& ff)
+{
+  ArgumentMap argmap;
+  Context ctx = ff.config.lg_ctx;
+  Runtime* runtime = ff.config.lg_hlr;
+  IndexSpaceT<2> task_is = IndexSpaceT<2>(ff.get_or_create_task_is(""));
+  Rect<2> rect = runtime->get_index_space_domain(ctx, task_is);
+  for (PointInRectIterator<2> it(rect); it(); it++) {
+    SampleIdxs meta;
+    assert(ff.config.batchSize % (rect.hi[1] - rect.lo[1] + 1) == 0);
+    meta.numSamples = ff.config.batchSize / (rect.hi[1] - rect.lo[1] + 1);
+    for (int i = 0; i < meta.numSamples; i++)
+      meta.idxs[i] = i;
+    argmap.set_point(*it, TaskArgument(&meta, sizeof(SampleIdxs)));
+  }
+  // Load Sparse Inputs
+  for (size_t i = 0; i < full_sparse_inputs.size(); i++) {
+    IndexLauncher launcher(CUSTOM_TASK_ID_1, task_is,
+                         TaskArgument(NULL, 0), argmap,
+                         Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
+                         FFConfig::get_hash_id(std::string("")));
+    launcher.add_region_requirement(
+        RegionRequirement(full_sparse_inputs[i].part, 0/*projection id*/,
+                          READ_ONLY, EXCLUSIVE, full_sparse_inputs[i].region));
+    launcher.add_field(0, FID_DATA);
+    launcher.add_region_requirement(
+        RegionRequirement(batch_sparse_inputs[i].part, 0/*projection id*/,
+                          WRITE_ONLY, EXCLUSIVE, batch_sparse_inputs[i].region));
+    launcher.add_field(1, FID_DATA);
+    runtime->execute_index_space(ctx, launcher);
+  }
+  // Load Dense Input
+  {
+    IndexLauncher launcher(CUSTOM_TASK_ID_2, task_is,
+                         TaskArgument(NULL, 0), argmap,
+                         Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
+                         FFConfig::get_hash_id(std::string("")));
+    launcher.add_region_requirement(
+        RegionRequirement(full_dense_input.part, 0/*projection id*/,
+                          READ_ONLY, EXCLUSIVE, full_dense_input.region));
+    launcher.add_field(0, FID_DATA);
+    launcher.add_region_requirement(
+        RegionRequirement(batch_dense_input.part, 0/*projection id*/,
+                          WRITE_ONLY, EXCLUSIVE, batch_dense_input.region));
+    launcher.add_field(1, FID_DATA);
+    runtime->execute_index_space(ctx, launcher);
+  }
+  // Load Labels
+  {
+    IndexLauncher launcher(CUSTOM_TASK_ID_3, task_is,
+                         TaskArgument(NULL, 0), argmap,
+                         Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
+                         FFConfig::get_hash_id(std::string("")));
+    launcher.add_region_requirement(
+        RegionRequirement(full_label.part, 0/*projection id*/,
+                          READ_ONLY, EXCLUSIVE, full_label.region));
+    launcher.add_field(0, FID_DATA);
+    launcher.add_region_requirement(
+        RegionRequirement(batch_label.part, 0/*projection id*/,
+                          WRITE_ONLY, EXCLUSIVE, batch_label.region));
+    launcher.add_field(1, FID_DATA);
+    runtime->execute_index_space(ctx, launcher);
+  }
+}
+
+void DataLoader::shuffle()
+{}
+
+void register_custom_tasks()
+{
+  // Load Sparse Inputs
+  {
+    TaskVariantRegistrar registrar(CUSTOM_TASK_ID_1, "Load Sparse Inputs");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    Runtime::preregister_task_variant<DataLoader::load_sparse_input>(
+        registrar, "Load Sparse Inputs Task");
+  }
+  // Load Dense Inputs
+  {
+    TaskVariantRegistrar registrar(CUSTOM_TASK_ID_2, "Load Densee Inputs");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    Runtime::preregister_task_variant<DataLoader::load_dense_input>(
+        registrar, "Load Dense Inputs Task");
+  }
+  // Load Labels
+  {
+    TaskVariantRegistrar registrar(CUSTOM_TASK_ID_3, "Load Labels");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    Runtime::preregister_task_variant<DataLoader::load_label>(
+        registrar, "Load Labels");
   }
 }
