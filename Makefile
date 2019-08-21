@@ -18,6 +18,8 @@ ifndef LG_RT_DIR
 LG_RT_DIR	?= legion/runtime
 endif
 
+#CXX=clang++
+
 # Flags for directing the runtime makefile what to include
 DEBUG           ?= 1		# Include debugging symbols
 MAX_DIM         ?= 4		# Maximum number of dimensions
@@ -37,13 +39,20 @@ GEN_HIP_SRC	?= src/ops/conv_2d.cu src/runtime/model.cu src/ops/pool_2d.cu src/op
 		src/ops/softmax.cu src/ops/concat.cu src/ops/flat.cu src/ops/embedding.cu src/ops/mse_loss.cu\
 		src/runtime/initializer_kernel.cu src/runtime/optimizer_kernel.cu src/runtime/accessor_kernel.cu\
 		src/runtime/cuda_helper.cu $(app).cu# .cu files
+		
+#GEN_HIP_SRC	?= src/ops/conv_2d.cpp src/runtime/model.cpp src/ops/pool_2d.cpp src/ops/batch_norm.cpp src/ops/linear.cpp  \
+		src/ops/softmax.cpp src/ops/concat.cpp src/ops/flat.cpp src/ops/embedding.cpp src/ops/mse_loss.cpp\
+		src/runtime/initializer_kernel.cpp src/runtime/optimizer_kernel.cpp src/runtime/accessor_kernel.cpp\
+		src/runtime/cuda_helper.cpp $(app).cpp# .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
 INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf/include -I/home/wwu/app/hipdnn-cuda/hipdnn/include -I/home/wwu/app/hipblas-cuda/include -I/home/wwu/app/hiprand-cuda/hiprand/include
+#INC_FLAGS	?= -Iinclude/ -I/home/wwu/app/protobuf-hipcc/include -I/home/wwu/app/hipdnn/hipdnn/include -I/opt/rocm/hiprand/include -I/opt/rocm/include/rocrand
 CC_FLAGS	?=
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
 LD_FLAGS	?= -L$(CUDA_PATH)/lib64 -lcudnn -lcublas -lcublasLt -lcurand -L/home/wwu/app/protobuf/lib -lprotobuf -L/home/wwu/app/hipdnn-cuda/hipdnn/lib -lhipdnn -L/home/wwu/app/hipblas-cuda/lib -lhipblas-d -L/home/wwu/app/hiprand-cuda/hiprand/lib -lhiprand-d
+#LD_FLAGS	?= -L/home/wwu/app/protobuf-hipcc/lib -lprotobuf -L/home/wwu/app/hipdnn/hipdnn/lib -lhipdnn -L$(HIP_PATH)/lib -lhipblas -L/opt/rocm/hiprand/lib -lhiprand
 # For Point and Rect typedefs
 CC_FLAGS	+= -std=c++11
 NVCC_FLAGS  += -std=c++11
