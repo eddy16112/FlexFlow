@@ -58,6 +58,7 @@ class Sequential(BaseModel):
   def __add_model(self, model):
     for layer in model.layers:
       layer.reset_connection()
+      layer.enable_copy = False
       self.__add_layer(layer)
       
   def __add_input(self, tensor):

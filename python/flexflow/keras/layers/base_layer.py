@@ -24,7 +24,7 @@ class Layer(object):
   __slots__ = ['_ffhandle', '_name', '_layer_type', '_initialized',\
                'layer_id', 'prev_layers', 'next_layers',\
                'input_tensors', 'output_tensors', \
-               'input_shape', 'output_shape', 'nb_visited_prev_layers', 'has_visited', 'uid']
+               'input_shape', 'output_shape', 'nb_visited_prev_layers', 'has_visited', 'uid', 'enable_copy']
   def __init__(self, default_name, layer_type, **kwargs):
     name = default_name
     if 'name' in kwargs:
@@ -46,6 +46,7 @@ class Layer(object):
     global layer_uid
     self.uid = layer_uid
     layer_uid = layer_uid + 1
+    self.enable_copy = True
     
   @property
   def name(self):
@@ -168,7 +169,7 @@ class Layer(object):
     
   def _duplicate_layer(self):
     global layer_dict
-    if self.uid in layer_dict:
+    if self.uid in layer_dict and self.enable_copy:
       print("deep copy")
       layer = copy.deepcopy(self)
       layer.reset_connection()
