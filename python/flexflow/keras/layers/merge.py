@@ -32,7 +32,10 @@ class _Merge(Layer):
     return summary
     
   def __call__(self, input_tensors):
-    return self._connect_layer_n_input_1_output(input_tensors)
+    layer = self._duplicate_layer()
+    if layer == None:
+      return self.connect_layer_n_input_1_output(input_tensors)
+    return layer.connect_layer_n_input_1_output(input_tensors)
     
   def _verify_inout_tensor_shape(self, input_tensors, output_tensor):
     assert self.__check_duplications(input_tensors) == False, "[Merge]: dunpicated input_tensors is not supported"

@@ -55,7 +55,11 @@ class Pooling2D(Layer):
     return summary
     
   def __call__(self, input_tensor):
-    return self._connect_layer_1_input_1_output(input_tensor)
+    layer = self._duplicate_layer()
+    if layer == None:
+      return self.connect_layer_1_input_1_output(input_tensor)
+    else:
+      return layer.connect_layer_1_input_1_output(input_tensor)
     
   def _calculate_inout_shape(self, input_tensor):
     assert input_tensor.num_dims == 4, "[MaxPooling2D]: shape of input tensor is wrong"

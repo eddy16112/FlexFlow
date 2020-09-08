@@ -12,16 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+import copy
 import flexflow.core as ff
 
 from flexflow.keras.models.tensor import Tensor
+
+layer_dict = dict()
+layer_uid = 0
 
 class Layer(object):
   __slots__ = ['_ffhandle', '_name', '_layer_type', '_initialized',\
                'layer_id', 'prev_layers', 'next_layers',\
                'input_tensors', 'output_tensors', \
-               'input_shape', 'output_shape', 'nb_visited_prev_layers', 'has_visited']
+               'input_shape', 'output_shape', 'nb_visited_prev_layers', 'has_visited', 'uid']
   def __init__(self, default_name, layer_type, **kwargs):
     name = default_name
     if 'name' in kwargs:
@@ -39,7 +42,10 @@ class Layer(object):
     self.input_shape = None
     self.output_shape = None
     self.nb_visited_prev_layers = 0
-    self.has_visited = False;
+    self.has_visited = False
+    global layer_uid
+    self.uid = layer_uid
+    layer_uid = layer_uid + 1
     
   @property
   def name(self):
@@ -114,7 +120,7 @@ class Layer(object):
     bias_parameter.set_weights(ffmodel, bias)
     
   def _get_summary_name(self):
-    str_name = "{0:25}".format(self._name + " (" + self._layer_type + ")")
+    str_name = "{0:25}".format(self._name + " (" + self._layer_type + ")" + str(self.uid))
     return str_name
     
   def _get_summary_connected_to(self):
@@ -123,7 +129,7 @@ class Layer(object):
       str_name += "\t%s"%(layer.name)
     return str_name
     
-  def _connect_layer_1_input_1_output(self, input_tensor):
+  def connect_layer_1_input_1_output(self, input_tensor):
     assert self._initialized == False, "[Layer]: layer is initialized, do not reuse the layer"
     self._initialized = True
     self._calculate_inout_shape(input_tensor)
@@ -141,7 +147,7 @@ class Layer(object):
 
     return output_tensor
     
-  def _connect_layer_n_input_1_output(self, input_tensors):
+  def connect_layer_n_input_1_output(self, input_tensors):
     assert self._initialized == False, "[Layer]: layer is initialized, do not reuse the layer"
     self._initialized = True
     self._calculate_inout_shape(input_tensors)
@@ -159,3 +165,17 @@ class Layer(object):
       self.prev_layers.append(tensor.from_layer)
       tensor.from_layer.next_layers.append(self)
     return output_tensor
+    
+  def _duplicate_layer(self):
+    global layer_dict
+    if self.uid in layer_dict:
+      print("deep copy")
+      layer = copy.deepcopy(self)
+      layer.reset_connection()
+      global layer_uid
+      layer.uid = layer_uid
+      layer_uid = layer_uid + 1
+      return layer
+    else: 
+      layer_dict[self.uid] = self
+      return None

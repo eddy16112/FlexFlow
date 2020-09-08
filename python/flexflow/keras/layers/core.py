@@ -97,7 +97,11 @@ class Dense(Layer):
     self._set_weights(ffmodel, kernel, bias)
   
   def __call__(self, input_tensor):
-    return self._connect_layer_1_input_1_output(input_tensor)
+    layer = self._duplicate_layer()
+    if layer == None:
+      return self.connect_layer_1_input_1_output(input_tensor)
+    else:
+      return layer.connect_layer_1_input_1_output(input_tensor)
     
   def _calculate_inout_shape(self, input_tensor):
     assert input_tensor.num_dims == 2, "[Dense]: shape of input tensor is wrong"
@@ -134,8 +138,12 @@ class Flatten(Layer):
     summary = "%s%s\t\t%s%s\n"%(self._get_summary_name(), self.output_shape, self.input_shape, self._get_summary_connected_to())
     return summary
     
-  def __call__(self, input_tensor):    
-    return self._connect_layer_1_input_1_output(input_tensor)
+  def __call__(self, input_tensor):   
+    layer = self._duplicate_layer()
+    if layer == None:
+      return self.connect_layer_1_input_1_output(input_tensor)
+    else:
+      return layer.connect_layer_1_input_1_output(input_tensor)
     
   def _calculate_inout_shape(self, input_tensor):
     input_shape = input_tensor.batch_shape
@@ -184,7 +192,11 @@ class Embedding(Layer):
     return summary
     
   def __call__(self, input_tensor):
-    return self._connect_layer_1_input_1_output(input_tensor)
+    layer = self._duplicate_layer()
+    if layer == None:
+      return self._connect_layer_1_input_1_output(input_tensor)
+    else:
+      return layer.connect_layer_1_input_1_output(input_tensor)
     
   def _calculate_inout_shape(self, input_tensor):
     assert input_tensor.num_dims == 2, "[Embedding]: shape of input tensor is wrong"
@@ -223,7 +235,11 @@ class Activation(Layer):
     return summary
     
   def __call__(self, input_tensor):
-    return self._connect_layer_1_input_1_output(input_tensor)
+    layer = self._duplicate_layer()
+    if layer == None:
+      return self.connect_layer_1_input_1_output(input_tensor)
+    else:
+      return layer.connect_layer_1_input_1_output(input_tensor)
     
   def _calculate_inout_shape(self, input_tensor):
     self.input_shape = input_tensor.batch_shape
@@ -255,7 +271,11 @@ class Dropout(Layer):
     return summary
     
   def __call__(self, input_tensor):
-    return self._connect_layer_1_input_1_output(input_tensor)
+    layer = self._duplicate_layer()
+    if layer == None:
+      return self.connect_layer_1_input_1_output(input_tensor)
+    else:
+      return layer.connect_layer_1_input_1_output(input_tensor)
     
   def _calculate_inout_shape(self, input_tensor):
     self.input_shape = input_tensor.batch_shape
