@@ -515,6 +515,9 @@ class BaseModel(object):
 
       assert op.ffhandle == None, "layer handle is inited"
       op.ffhandle = self._ffmodel.get_layer_by_id(op.op_id)
+      # ophandle = out_t.owner_op
+      # assert op.ffhandle.handle.impl == ophandle.handle.impl
+      # print(ophandle.handle.impl)
       assert op.ffhandle != None, "layer handle is wrong"
        
   def _init_inout(self):
