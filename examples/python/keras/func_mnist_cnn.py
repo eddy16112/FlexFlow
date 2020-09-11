@@ -63,10 +63,10 @@ def top_level_task():
   print(model.summary())
   
   flatten1 = model.get_layer(name='flat')
-  t1 = flatten1.output_tensors[0]
-  t2 = flatten1.input_tensors[0]
-  print("t1: ", t1.to_layers, " ", t1.from_layer)
-  print("t2: ", t2.to_layers, " ", t2.from_layer)
+  t1 = flatten1.op_list[0].output_tensors[0]
+  t2 = flatten1.op_list[0].input_tensors[0]
+  print("t1: ", t1.to_ops, " ", t1.from_op)
+  print("t2: ", t2.to_ops, " ", t2.from_op)
   
   model.fit(x_train, y_train, epochs=5, callbacks=[VerifyMetrics(ModelAccuracy.MNIST_CNN), EpochVerifyMetrics(ModelAccuracy.MNIST_CNN)])
 

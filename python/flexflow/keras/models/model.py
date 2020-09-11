@@ -18,7 +18,7 @@ from flexflow.core.flexflow_logger import fflogger
 
 from .base_model import BaseModel
 from .tensor import Tensor
-from flexflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Activation, Concatenate, Input, InputLayer
+from flexflow.keras.layers import Conv2D, MaxPooling2D, _FlattenOp, _DenseOp, _ActivationOp, Concatenate, Input, _InputOp
 
 class Model(BaseModel):
   def __init__(self, inputs, outputs, name=None):
@@ -29,66 +29,64 @@ class Model(BaseModel):
     
     self._input_tensors = inputs
     for input_tensor in inputs:
-      self._input_layers.append(input_tensor.from_layer)
+      self._input_ops.append(input_tensor.from_op)
     self._output_tensor = outputs
     
     self.__traverse_dag_dfs()
-    fflogger.debug("nb_layers %d" %(self._nb_layers))
+    fflogger.debug("nb_layers %d" %(self._nb_ops))
     
   def __call__(self, input_tensor):
-    for layer in self._layers:
-      layer.reset_layer()
     self._output_tensor = input_tensor
-    for layer in self._layers:
-      self._output_tensor = layer(self._output_tensor)
+    for op in self._ops:
+      self._output_tensor = op.layer(self._output_tensor)
     self._input_tensors = [input_tensor]
     return self._output_tensor
     
-  def _add_layer_metadata(self, layer):
-    self._layers.append(layer)
+  def _add_op_metadata(self, op):
+    self._ops.append(op)
     #assert layer.layer_id == -1, "layer id is inited"
-    assert layer.ffhandle == None, "layer handle is inited"
-    layer.layer_id = self._nb_layers
-    self._nb_layers += 1       
+    assert op.ffhandle == None, "layer handle is inited"
+    op.op_id = self._nb_ops
+    self._nb_ops += 1       
 
   def __traverse_dag_bfs(self):
     bfs_queue = []
-    for input_layer in self._input_layers:
-      bfs_queue.append(input_layer)
+    for input_op in self._input_ops:
+      bfs_queue.append(input_op)
     while(len(bfs_queue) != 0):
-      layer = bfs_queue.pop(0)
-      if (isinstance(layer, InputLayer) == False):
+      op = bfs_queue.pop(0)
+      if (isinstance(op, _InputOp) == False):
        #fflogger.debug(layer)
-        self._add_layer_metadata(layer)
-      for child in layer.next_layers:
+        self._add_op_metadata(op)
+      for child in op.next_ops:
         assert child not in bfs_queue, "already in the stack"
-        if child.nb_visited_prev_layers == len(child.prev_layers)-1:
+        if child.nb_visited_prev_ops == len(child.prev_ops)-1:
           if child.has_visited == False:
             child.has_visited = True
             bfs_queue.append(child)
         else:
-          child.nb_visited_prev_layers += 1
-    for layer in self._layers:
-      layer.nb_visited_prev_layers = 0
-      layer.has_visited = False
+          child.nb_visited_prev_ops += 1
+    for op in self._ops:
+      op.nb_visited_prev_ops = 0
+      op.has_visited = False
     
   def __traverse_dag_dfs(self):    
     dfs_stack = []
-    for input_layer in reversed(self._input_layers):
-      dfs_stack.append(input_layer)
+    for input_op in reversed(self._input_ops):
+      dfs_stack.append(input_op)
     while(len(dfs_stack) != 0):
-      layer = dfs_stack.pop()
-      if (isinstance(layer, InputLayer) == False):
+      op = dfs_stack.pop()
+      if (isinstance(op, _InputOp) == False):
         #fflogger.debug(layer)
-        self._add_layer_metadata(layer)
-      for child in reversed(layer.next_layers):
+        self._add_op_metadata(op)
+      for child in reversed(op.next_ops):
         assert child not in dfs_stack, "already in the stack"
-        if child.nb_visited_prev_layers == len(child.prev_layers)-1:
+        if child.nb_visited_prev_ops == len(child.prev_ops)-1:
           if child.has_visited == False:
             child.has_visited = True
             dfs_stack.append(child)
         else:
-          child.nb_visited_prev_layers += 1
-    for layer in self._layers:
-      layer.nb_visited_prev_layers = 0
-      layer.has_visited = False
+          child.nb_visited_prev_ops += 1
+    for op in self._ops:
+      op.nb_visited_prev_ops = 0
+      op.has_visited = False

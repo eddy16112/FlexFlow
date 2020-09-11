@@ -16,7 +16,7 @@
 import flexflow.core as ff
 
 class Tensor(object):
-  __slots__ = ['_ffhandle', 'to_layers', 'from_layer', 'dtype', \
+  __slots__ = ['_ffhandle', 'to_ops', 'from_op', 'dtype', \
                'batch_shape', 'name', 'num_dims']
   def __init__(self, ffmodel=None, 
                shape=None, batch_size=None,
@@ -35,8 +35,8 @@ class Tensor(object):
       batch_shape = kwargs["batch_shape"]
                
     self._ffhandle = ffhandle
-    self.to_layers = []
-    self.from_layer = 0
+    self.to_ops = []
+    self.from_op = 0
     if dtype == None or dtype == "float32" or dtype == ff.DataType.DT_FLOAT:
       self.dtype = ff.DataType.DT_FLOAT
     elif dtype == "float64" or dtype == ff.DataType.DT_DOUBLE:
@@ -105,12 +105,12 @@ class Tensor(object):
     self.__verify_ffhandle_shape()
     self.__verify_ffhandle_dtype()
     
-  def set_from_layer(self, layer):
-    assert self.from_layer == 0, "[Tensor]: from layer has been set"
-    self.from_layer = layer
+  def set_from_op(self, op):
+    assert self.from_op == 0, "[Tensor]: from op has been set"
+    self.from_op = op
     
-  def set_to_layer(self, layer):
-    self.to_layers.append(layer)
+  def set_to_op(self, op):
+    self.to_ops.append(op)
     
   def set_batch_size(self, size):
     lst = list(self.batch_shape)

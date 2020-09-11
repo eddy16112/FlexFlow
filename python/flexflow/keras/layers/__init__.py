@@ -13,8 +13,15 @@
 # limitations under the License.
 #
 
+from .base_op import _Op
+from .convolutional_op import _Conv2DOp
+from .normalization_op import _BatchNormalizationOp
+from .pool_op import _Pooling2DOp 
+from .core_op import _DenseOp, _FlattenOp, _EmbeddingOp, _ActivationOp, _DropoutOp
+from .merge_op import _ConcatenateOp, _AddOp, _SubtractOp, _MultiplyOp
+
 from .base_layer import Layer
-from .input_layer import InputLayer, Input
+from .input_layer import InputLayer, Input, _InputOp
 from .convolutional import Conv2D
 from .normalization import BatchNormalization
 from .pool import Pooling2D, MaxPooling2D, AveragePooling2D 

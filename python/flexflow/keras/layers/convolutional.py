@@ -19,11 +19,12 @@ import math
 
 from .base_layer import Layer
 from .input_layer import Input
+from .convolutional_op import _Conv2DOp
 from flexflow.keras.models.tensor import Tensor
 from flexflow.keras.initializers import Zeros, GlorotUniform, RandomUniform, RandomNormal, DefaultInitializer, Initializer
 
 class Conv2D(Layer):
-  __slots__ = ['in_channels', 'out_channels', 'kernel_size', 'stride', \
+  __slots__ = ['out_channels', 'kernel_size', 'stride', \
                'padding', 'activation', 'use_bias', 'kernel_initializer', \
                'bias_initializer']
   def __init__(self, 
@@ -78,7 +79,6 @@ class Conv2D(Layer):
     else:
       assert 0, "[Dense]: unknown bias_initializer"
     
-    self.in_channels = 0
     self.out_channels = filters
     assert len(kernel_size)==2, "wrong dim of kernel_size"
     self.kernel_size = kernel_size
@@ -100,22 +100,16 @@ class Conv2D(Layer):
     else:
       assert 0, "activation is not supported"
     if (len(input_shape) == 4):
-      self.in_channels = input_shape[1]
-      self.input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3])
+      op = _Conv2DOp(self)
+      op.in_channels = input_shape[1]
+      op.input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3])
+      self.op_list.append(op)
     elif (len(input_shape) == 3):
-      self.in_channels = input_shape[0]
-      self.input_shape = (0, input_shape[0], input_shape[1], input_shape[2])
+      op = _Conv2DOp(self)
+      op.in_channels = input_shape[0]
+      op.input_shape = (0, input_shape[0], input_shape[1], input_shape[2])
+      self.op_list.append(op)
     self.use_bias = use_bias
-  
-  def verify_meta_data(self):
-    assert self.input_shape != (0, 0, 0, 0), "[Conv2D]: input shape is wrong"
-    assert self.output_shape != (0, 0, 0, 0), "[Conv2D]: output shape is wrong"
-    assert self.in_channels != 0, "[Conv2D]: in channels is wrong"
-    assert self.out_channels != 0, "[Conv2D]: out channels is wrong"
-    
-  def get_summary(self):
-    summary = "%s%s\t\t%s\t%s\n"%(self._get_summary_name(), self.output_shape, self.input_shape, self._get_summary_connected_to())
-    return summary
     
   def get_weights(self, ffmodel):
     return self._get_weights(ffmodel)
@@ -124,48 +118,13 @@ class Conv2D(Layer):
     self._set_weights(ffmodel, kernel, bias)
     
   def __call__(self, input_tensor):
-    return self._connect_layer_1_input_1_output(input_tensor)
-    
-  def _calculate_inout_shape(self, input_tensor):
-    assert input_tensor.num_dims == 4, "[Conv2D]: shape of input tensor is wrong"
-    input_b = input_tensor.batch_shape[0]
-    input_d = input_tensor.batch_shape[1]
-    input_h = input_tensor.batch_shape[2]
-    input_w = input_tensor.batch_shape[3]
-    assert input_h != 0, "wrong input_h"
-    assert input_w != 0, "wrong input_w"
-    assert input_d != 0, "wrong input_d"
-    
-    #calculate padding for same
-    if (self.padding == 'same'):
-      if (input_h % self.stride[0] == 0):
-        padding_h = max(self.kernel_size[0] - self.stride[0], 0)
+    if len(self.op_list) == 0:
+      op = _Conv2DOp(self)
+      self.op_list.append(op)
+    else:
+      if self.op_list[0].initialized == True:
+        op = _Conv2DOp(self)
+        self.op_list.append(op)
       else:
-        padding_h = max(self.kernel_size[0] - (input_h % self.stride[0]), 0)
-      if (input_w % self.stride[1] == 0):
-        padding_w = max(self.kernel_size[1] - self.stride[1], 0)
-      else:
-        padding_w = max(self.kernel_size[1] - (input_w % self.stride[1]), 0)
-      self.padding = (padding_h//2, padding_w//2)
-      fflogger.debug("conv2d same padding %s" %(str(self.padding)))
-    
-    self.input_shape = (input_b, input_d, input_w, input_h)
-    self.in_channels = input_d
-    output_h = 1 + math.floor((input_h + 2 * self.padding[0] - self.kernel_size[0]) / self.stride[0])
-    output_w = 1 + math.floor((input_w + 2 * self.padding[1] - self.kernel_size[1]) / self.stride[1])
-    output_d = self.out_channels
-    self.output_shape = (input_b, output_d, output_h, output_w)
-    fflogger.debug("conv2d input %s, output %s" %( str(self.input_shape), str(self.output_shape)))
-    
-  def _verify_inout_tensor_shape(self, input_tensor, output_tensor):
-    assert input_tensor.num_dims == 4, "[Conv2D]: check input tensor dims"
-    assert input_tensor.batch_shape[1] == self.input_shape[1]
-    assert input_tensor.batch_shape[2] == self.input_shape[2]
-    assert input_tensor.batch_shape[3] == self.input_shape[3]
-    assert output_tensor.num_dims == 4, "[Conv2D]: check output tensor dims"
-    assert output_tensor.batch_shape[1] == self.output_shape[1]
-    assert output_tensor.batch_shape[2] == self.output_shape[2]
-    assert output_tensor.batch_shape[3] == self.output_shape[3]
-    
-  def _reset_layer(self):
-    self.in_channels = 0
+        op = self.op_list[0]
+    return op(input_tensor)

@@ -17,7 +17,7 @@ import flexflow.core as ff
 from flexflow.core.flexflow_logger import fflogger
 
 from .tensor import Tensor
-from flexflow.keras.layers import Conv2D, Pooling2D, Flatten, Dense, Activation, Concatenate, Add, Subtract, Multiply, Dropout, BatchNormalization, Embedding
+from flexflow.keras.layers import _Conv2DOp, _Pooling2DOp, _FlattenOp, _DenseOp, _ActivationOp, _ConcatenateOp, _AddOp, _SubtractOp, _MultiplyOp, _DropoutOp, _BatchNormalizationOp, _EmbeddingOp
 from flexflow.keras.optimizers import SGD, Adam 
 from flexflow.keras.callbacks import Callback, LearningRateScheduler, VerifyMetrics, EpochVerifyMetrics 
 from flexflow.keras import losses as keras_losses
@@ -42,9 +42,9 @@ class BaseModel(object):
     
     self._name = name
     self._ffoptimizer = None
-    self._layers = []
-    self._nb_layers = 0
-    self._input_layers = []
+    self._ops = []
+    self._nb_ops = 0
+    self._input_ops = []
     self._input_tensors = []
     self._output_tensor = 0
     self._label_tensor = 0
@@ -73,7 +73,7 @@ class BaseModel(object):
   
   @property  
   def layers(self):
-    return self._layers
+    return self._ops
     
   @property
   def optimizer(self):
@@ -89,18 +89,18 @@ class BaseModel(object):
     
   def get_layer(self, name=None, index=None):
     if (index is not None):
-      if (self._nb_layers <= index):
+      if (self._nb_ops <= index):
         raise ValueError('Was asked to retrieve layer at index ' +
                          str(index) + ' but model only has ' +
-                         str(self._nb_layers) + ' layers.')
+                         str(self._nb_ops) + ' layers.')
       else:
-        return self._layers[index]
+        return self._ops[index].layer
     else:
       if not name:
         raise ValueError('Provide either a layer name or layer index.')
-    for layer in self._layers:
-      if (layer.name == name):
-        return layer
+    for op in self._ops:
+      if (op.layer.name == name):
+        return op.layer
     raise ValueError('No such layer: ' + name)
   
   # TODO: finish API    
@@ -111,16 +111,16 @@ class BaseModel(object):
       assert 0, "print_fn is not supported"
       
     model_summary = "Layer (type)\t\tOutput Shape\t\tInput Shape\tConnected to\n"
-    for layer in self._input_layers:
-      layer_summary = layer.get_summary()
+    for op in self._input_ops:
+      layer_summary = op.get_summary()
       model_summary += layer_summary
-    for layer in self._layers:
-      fflogger.debug(str(layer))
-      for prev_layer in layer.prev_layers:
-        fflogger.debug("\tprev: %s" %( str(prev_layer)))
-      for next_layer in layer.next_layers:
-        fflogger.debug("\tnext: %s" %( str(next_layer)))
-      layer_summary = layer.get_summary()
+    for op in self._ops:
+      fflogger.debug(str(op))
+      for prev_op in op.prev_ops:
+        fflogger.debug("\tprev: %s" %( str(prev_op)))
+      for next_op in op.next_ops:
+        fflogger.debug("\tnext: %s" %( str(next_op)))
+      layer_summary = op.get_summary()
       model_summary += layer_summary 
       
     return model_summary
@@ -307,11 +307,11 @@ class BaseModel(object):
     assert label_array.dtype == self._label_tensor.dtype_str
       
   def _verify_output_tensors(self):
-    assert self._layers[self._nb_layers-1].output_tensors[0] == self._output_tensor, "output tensor is wrong"
+    assert self._ops[self._nb_ops-1].output_tensors[0] == self._output_tensor, "output tensor is wrong"
     
   def _verify_input_tensors(self):
     for t in self._input_tensors:
-      assert len(t.to_layers) > 0, "input tensor has not to_layers"
+      assert len(t.to_ops) > 0, "input tensor has not to_layers"
       
   def _create_optimizer(self):
     assert self._ffoptimizer != None, "optimizer is not set"
@@ -398,7 +398,7 @@ class BaseModel(object):
         if (epoch > 0):
           self._ffconfig.begin_trace(self.__tracing_id)
         self._ffmodel.forward()
-        # for layer in self._layers:
+        # for layer in self._ops:
         #   layer.ffhandle.forward(self._ffmodel)
         if eval == False:
           self._ffmodel.zero_gradients()
@@ -444,7 +444,7 @@ class BaseModel(object):
     # self._label_tensor.ffhandle.inline_unmap(self._ffconfig)
     
   def _create_flexflow_layers_v2(self):
-    for layer in self._layers:
+    for layer in self._ops:
 
       if (isinstance(layer, Conv2D) == True):
         layer.ffhandle = self._ffmodel.conv2d_v2(layer.in_channels, layer.out_channels, layer.kernel_size[0], layer.kernel_size[1], layer.stride[0], layer.stride[1], layer.padding[0], layer.padding[1], layer.activation, layer.use_bias)
@@ -463,77 +463,77 @@ class BaseModel(object):
         
   def _create_flexflow_layers(self):
     out_t = 0
-    for layer in self._layers:
+    for op in self._ops:
 
-      if isinstance(layer, Activation) == True:
-        if layer.activation == 'softmax':
-          assert layer.layer_id == self._nb_layers-1, "softmax is not in the last layer"
-          out_t = self._ffmodel.softmax(layer.input_tensors[0].ffhandle)
-        elif layer.activation == 'relu':
-          out_t = self._ffmodel.relu(layer.input_tensors[0].ffhandle)
-        elif layer.activation == 'sigmoid':
-          out_t = self._ffmodel.sigmoid(layer.input_tensors[0].ffhandle)
-        elif layer.activation == 'tanh':
-          out_t = self._ffmodel.tanh(layer.input_tensors[0].ffhandle)
-        elif layer.activation == 'elu':
-          out_t = self._ffmodel.elu(layer.input_tensors[0].ffhandle)
-      elif isinstance(layer, Concatenate) == True:
+      if isinstance(op, _ActivationOp) == True:
+        if op.layer.activation == 'softmax':
+          assert op.op_id == self._nb_ops-1, "softmax is not in the last layer"
+          out_t = self._ffmodel.softmax(op.input_tensors[0].ffhandle)
+        elif op.layer.activation == 'relu':
+          out_t = self._ffmodel.relu(op.input_tensors[0].ffhandle)
+        elif op.layer.activation == 'sigmoid':
+          out_t = self._ffmodel.sigmoid(op.input_tensors[0].ffhandle)
+        elif op.layer.activation == 'tanh':
+          out_t = self._ffmodel.tanh(op.input_tensors[0].ffhandle)
+        elif op.layer.activation == 'elu':
+          out_t = self._ffmodel.elu(op.input_tensors[0].ffhandle)
+      elif isinstance(op, _ConcatenateOp) == True:
         t_ffhandle_list = []
-        for t in layer.input_tensors:
+        for t in op.input_tensors:
           t_ffhandle_list.append(t.ffhandle)
-        out_t = self._ffmodel.concat(t_ffhandle_list, layer.axis)
-      elif isinstance(layer, Conv2D) == True:
-        out_t = self._ffmodel.conv2d(layer.input_tensors[0].ffhandle, layer.out_channels, layer.kernel_size[0], layer.kernel_size[1], layer.stride[0], layer.stride[1], layer.padding[0], layer.padding[1], layer.activation, layer.use_bias, None, layer.kernel_initializer.ffhandle, layer.bias_initializer.ffhandle)
-      elif isinstance(layer, Pooling2D) == True:
-        out_t = self._ffmodel.pool2d(layer.input_tensors[0].ffhandle, layer.kernel_size[1], layer.kernel_size[0], layer.stride[0], layer.stride[1], layer.padding[0], layer.padding[1], layer.pool_type)
-      elif isinstance(layer, Flatten) == True:
-        out_t = self._ffmodel.flat(layer.input_tensors[0].ffhandle)
-      elif isinstance(layer, Dense) == True:
-        out_t = self._ffmodel.dense(layer.input_tensors[0].ffhandle, layer.out_channels, layer.activation, layer.use_bias, None, layer.kernel_initializer.ffhandle, layer.bias_initializer.ffhandle)
-      elif isinstance(layer, Add) == True:
-        out_t = self._ffmodel.add(layer.input_tensors[0].ffhandle, layer.input_tensors[1].ffhandle)
-      elif isinstance(layer, Subtract) == True:
-        out_t = self._ffmodel.subtract(layer.input_tensors[0].ffhandle, layer.input_tensors[1].ffhandle)
-      elif isinstance(layer, Multiply) == True:
-        out_t = self._ffmodel.multiply(layer.input_tensors[0].ffhandle, layer.input_tensors[1].ffhandle)
-      elif isinstance(layer, Dropout) == True:
-        out_t = self._ffmodel.dropout(layer.input_tensors[0].ffhandle, layer.rate, layer.seed)
-      elif isinstance(layer, BatchNormalization) == True:
-        out_t = self._ffmodel.batch_norm(layer.input_tensors[0].ffhandle)
-      elif isinstance(layer, Embedding) == True:
-        out_t = self._ffmodel.embedding(layer.input_tensors[0].ffhandle, layer.input_dim, layer.out_channels, ff.AggrMode.AGGR_MODE_SUM, None, layer.embeddings_initializer.ffhandle)
+        out_t = self._ffmodel.concat(t_ffhandle_list, op.layer.axis)
+      elif isinstance(op, _Conv2DOp) == True:
+        out_t = self._ffmodel.conv2d(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.kernel_size[0], op.layer.kernel_size[1], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.activation, op.layer.use_bias, None, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
+      elif isinstance(op, _Pooling2DOp) == True:
+        out_t = self._ffmodel.pool2d(op.input_tensors[0].ffhandle, op.layer.kernel_size[1], op.layer.kernel_size[0], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.pool_type)
+      elif isinstance(op, _FlattenOp) == True:
+        out_t = self._ffmodel.flat(op.input_tensors[0].ffhandle)
+      elif isinstance(op, _DenseOp) == True:
+        out_t = self._ffmodel.dense(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.activation, op.layer.use_bias, None, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
+      elif isinstance(op, _AddOp) == True:
+        out_t = self._ffmodel.add(op.input_tensors[0].ffhandle, op.input_tensors[1].ffhandle)
+      elif isinstance(op, _SubtractOp) == True:
+        out_t = self._ffmodel.subtract(op.input_tensors[0].ffhandle, op.input_tensors[1].ffhandle)
+      elif isinstance(op, _MultiplyOp) == True:
+        out_t = self._ffmodel.multiply(op.input_tensors[0].ffhandle, op.input_tensors[1].ffhandle)
+      elif isinstance(op, _DropoutOp) == True:
+        out_t = self._ffmodel.dropout(op.input_tensors[0].ffhandle, op.layer.rate, op.layer.seed)
+      elif isinstance(op, _BatchNormalizationOp) == True:
+        out_t = self._ffmodel.batch_norm(op.input_tensors[0].ffhandle)
+      elif isinstance(op, _EmbeddingOp) == True:
+        out_t = self._ffmodel.embedding(op.input_tensors[0].ffhandle, op.layer.input_dim, op.layer.out_channels, ff.AggrMode.AGGR_MODE_SUM, None, op.layer.embeddings_initializer.ffhandle)
       else:
         assert 0, "unknow layer"
 
-      layer.output_tensors[0].ffhandle = out_t
-      layer.set_batch_size(self._ffconfig.get_batch_size())
+      op.output_tensors[0].ffhandle = out_t
+      op.set_batch_size(self._ffconfig.get_batch_size())
 
-      assert layer.ffhandle == None, "layer handle is inited"
-      layer.ffhandle = self._ffmodel.get_layer_by_id(layer.layer_id)
-      assert layer.ffhandle != None, "layer handle is wrong"
+      assert op.ffhandle == None, "layer handle is inited"
+      op.ffhandle = self._ffmodel.get_layer_by_id(op.op_id)
+      assert op.ffhandle != None, "layer handle is wrong"
        
   def _init_inout(self):
     out_t = 0
-    for layer in self._layers:
+    for op in self._ops:
 
-      if (isinstance(layer, Activation) == True):
-        assert layer_id == self._nb_layers-1, "softmax is not in the last layer"
+      if (isinstance(op, Activation) == True):
+        assert layer_id == self._nb_ops-1, "softmax is not in the last layer"
         out_t = self._ffmodel.softmax(layer.input_tensors[0].ffhandle)
-        assert layer.ffhandle == 0, "layer handle is inited"
-        layer.ffhandle = self._ffmodel.get_layer_by_id(layer_id)
-      elif (isinstance(layer, Concatenate) == True):
+        assert op.ffhandle == 0, "layer handle is inited"
+        op.ffhandle = self._ffmodel.get_layer_by_id(layer_id)
+      elif (isinstance(op, Concatenate) == True):
         t_ffhandle_list = []
         for t in layer.input_tensors:
           t_ffhandle_list.append(t.ffhandle)
         out_t = self._ffmodel.concat(t_ffhandle_list, layer.axis)
-        assert layer.ffhandle == 0, "layer handle is inited"
-        layer.ffhandle = self._ffmodel.get_layer_by_id(layer_id)
+        assert op.ffhandle == 0, "layer handle is inited"
+        op.ffhandle = self._ffmodel.get_layer_by_id(layer_id)
       else:
-        out_t = layer.ffhandle.init_inout(self._ffmodel, layer.input_tensors[0].ffhandle);
+        out_t = op.ffhandle.init_inout(self._ffmodel, layer.input_tensors[0].ffhandle);
       
-      layer.output_tensors[0].ffhandle = out_t
-      layer.set_batch_size(self._ffconfig.get_batch_size())
-      assert layer.ffhandle != None, "layer handle is wrong"
+      op.output_tensors[0].ffhandle = out_t
+      op.set_batch_size(self._ffconfig.get_batch_size())
+      assert op.ffhandle != None, "layer handle is wrong"
       
     print("output tensor", self._output_tensor.batch_shape)
     
