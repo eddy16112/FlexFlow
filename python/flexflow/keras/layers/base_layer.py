@@ -35,6 +35,7 @@ class Layer(object):
     
   @property
   def input(self):
+    assert len(self.op_list) == 1, "Multiple ops"
     op = self.op_list[0]
     if (len(op.input_tensors) == 1):
       return op.input_tensors[0]
@@ -43,6 +44,7 @@ class Layer(object):
       
   @property
   def output(self):
+    assert len(self.op_list) == 1, "Multiple ops"
     op = self.op_list[0]
     if (len(op.output_tensors) == 1):
       return op.output_tensors[0]
@@ -50,16 +52,16 @@ class Layer(object):
       return op.output_tensors
     
   def _get_weights(self, ffmodel):
-    assert self.op_list[0]._ffhandle != None, "handle is not set correctly"
-    kernel_parameter = self.op_list[0]._ffhandle.get_weight_tensor()
-    bias_parameter = self.op_list[0]._ffhandle.get_bias_tensor()
+    assert self.op_list[0].ffhandle != None, "handle is not set correctly"
+    kernel_parameter = self.op_list[0].ffhandle.get_weight_tensor()
+    bias_parameter = self.op_list[0].ffhandle.get_bias_tensor()
     kernel_array = kernel_parameter.get_weights(ffmodel)
     bias_array = bias_parameter.get_weights(ffmodel)
     return (kernel_array, bias_array)
     
   def _set_weights(self, ffmodel, kernel, bias):
-    assert self.op_list[0]._ffhandle != None, "handle is not set correctly"
-    kernel_parameter = self.op_list[0]._ffhandle.get_weight_tensor()
-    bias_parameter = self.op_list[0]._ffhandle.get_bias_tensor()
+    assert self.op_list[0].ffhandle != None, "handle is not set correctly"
+    kernel_parameter = self.op_list[0].ffhandle.get_weight_tensor()
+    bias_parameter = self.op_list[0].ffhandle.get_bias_tensor()
     kernel_parameter.set_weights(ffmodel, kernel)
     bias_parameter.set_weights(ffmodel, bias)

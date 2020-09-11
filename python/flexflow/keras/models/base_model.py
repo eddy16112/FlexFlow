@@ -464,6 +464,11 @@ class BaseModel(object):
   def _create_flexflow_layers(self):
     out_t = 0
     for op in self._ops:
+      
+      if len(op.layer.op_list) == 1:
+        shared_op = None
+      else:
+        shared_op = op.layer.op_list[0].ffhandle
 
       if isinstance(op, _ActivationOp) == True:
         if op.layer.activation == 'softmax':
@@ -483,13 +488,13 @@ class BaseModel(object):
           t_ffhandle_list.append(t.ffhandle)
         out_t = self._ffmodel.concat(t_ffhandle_list, op.layer.axis)
       elif isinstance(op, _Conv2DOp) == True:
-        out_t = self._ffmodel.conv2d(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.kernel_size[0], op.layer.kernel_size[1], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.activation, op.layer.use_bias, None, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
+        out_t = self._ffmodel.conv2d(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.kernel_size[0], op.layer.kernel_size[1], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.activation, op.layer.use_bias, shared_op, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
       elif isinstance(op, _Pooling2DOp) == True:
         out_t = self._ffmodel.pool2d(op.input_tensors[0].ffhandle, op.layer.kernel_size[1], op.layer.kernel_size[0], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.pool_type)
       elif isinstance(op, _FlattenOp) == True:
         out_t = self._ffmodel.flat(op.input_tensors[0].ffhandle)
       elif isinstance(op, _DenseOp) == True:
-        out_t = self._ffmodel.dense(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.activation, op.layer.use_bias, None, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
+        out_t = self._ffmodel.dense(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.activation, op.layer.use_bias, shared_op, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
       elif isinstance(op, _AddOp) == True:
         out_t = self._ffmodel.add(op.input_tensors[0].ffhandle, op.input_tensors[1].ffhandle)
       elif isinstance(op, _SubtractOp) == True:
@@ -501,7 +506,7 @@ class BaseModel(object):
       elif isinstance(op, _BatchNormalizationOp) == True:
         out_t = self._ffmodel.batch_norm(op.input_tensors[0].ffhandle)
       elif isinstance(op, _EmbeddingOp) == True:
-        out_t = self._ffmodel.embedding(op.input_tensors[0].ffhandle, op.layer.input_dim, op.layer.out_channels, ff.AggrMode.AGGR_MODE_SUM, None, op.layer.embeddings_initializer.ffhandle)
+        out_t = self._ffmodel.embedding(op.input_tensors[0].ffhandle, op.layer.input_dim, op.layer.out_channels, ff.AggrMode.AGGR_MODE_SUM, shared_op, op.layer.embeddings_initializer.ffhandle)
       else:
         assert 0, "unknow layer"
 

@@ -59,6 +59,7 @@ def top_level_task():
   input_tensor3 = Input(shape=(3, 32, 32), dtype="float32")
   output_tensor3 = model1(input_tensor3)
   output_tensor3 = model2(output_tensor3)
+  print(model2.get_layer(index=1).op_list)
   model = Model(input_tensor3, output_tensor3)
   
   opt = flexflow.keras.optimizers.SGD(learning_rate=0.01)
