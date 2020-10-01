@@ -42,10 +42,11 @@ def top_level_task():
   
   input_tensor = Input(shape=(784,))
   
-  output = Dense(512, input_shape=(784,), activation="relu")(input_tensor)
+  output1 = Dense(512, input_shape=(784,), activation="relu")(input_tensor)
+  output2 = Dense(512, input_shape=(784,), activation="relu")(input_tensor)
   shared_dense = Dense(512, activation="relu")
-  output21 = shared_dense(output)
-  output22 = shared_dense(output)
+  output21 = shared_dense(output1)
+  output22 = shared_dense(output2)
   output3 = Concatenate(axis=1)([output21, output22])
   output4 = Dense(num_classes)(output3)
   output5 = Activation("softmax")(output4)
