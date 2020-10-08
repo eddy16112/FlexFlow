@@ -112,12 +112,12 @@ void updateGAS(float* para_ptr, const float* grad_ptr, size_t replica_size,
   // Step 1: gater gradients to the first replica
   for (int i = 1; i < num_replica; i++) {
     const float *replica = grad_ptr + i * replica_size;
-    apply_add<<<GET_BLOCKS(replica_size), CUDA_NUM_THREADS>>>(
+    apply_add<<<GET_BLOCKS(replica_size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         (float*)grad_ptr, replica, replica_size);
   }
   // Step 2: scale the first replica
   float scale_factor = 1.0f / num_replica * (-learning_rate);
-  apply_add_with_scale<<<GET_BLOCKS(replica_size), CUDA_NUM_THREADS>>>(
+  apply_add_with_scale<<<GET_BLOCKS(replica_size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       para_ptr, grad_ptr, replica_size, scale_factor);
 }
 

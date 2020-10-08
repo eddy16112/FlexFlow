@@ -136,6 +136,12 @@ enum FieldIDs {
   FID_DATA,
 };
 
+#include "cuda_runtime.h"
+extern "C" {
+cudaStream_t hipGetTaskStream();
+}
+
+
 class FFModel;
 class Op;
 class DataLoader;

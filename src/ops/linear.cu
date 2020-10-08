@@ -385,10 +385,10 @@ void Linear::forward_task(const Task *task,
     cudaEventRecord(t_start);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   linear->forward_kernel(m, acc_input.ptr, acc_output.ptr,
       acc_kernel.ptr, acc_bias.ptr, in_dim, out_dim, batch_size);
@@ -464,10 +464,10 @@ void Linear::backward_kernel(const LinearMeta* m,
   float alpha = 1.0f;
   int output_size = out_dim * batch_size;
   if (activation == AC_MODE_RELU) {
-    reluBackward<<<GET_BLOCKS(output_size), CUDA_NUM_THREADS>>>(
+    reluBackward<<<GET_BLOCKS(output_size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         output_grad_ptr, output_ptr, output_size);
   } else if (activation == AC_MODE_SIGMOID) {
-    sigmoid_backward<<<GET_BLOCKS(output_size), CUDA_NUM_THREADS>>>(
+    sigmoid_backward<<<GET_BLOCKS(output_size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         output_grad_ptr, output_ptr, output_size);
   } else {
     // TODO: only support relu and sigmoid for now
@@ -561,10 +561,10 @@ void Linear::backward_task(const Task *task,
     cudaEventRecord(t_start);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   linear->backward_kernel(m, acc_input.ptr, input_grad,
       acc_output.ptr, acc_output_grad.ptr,
@@ -605,10 +605,10 @@ void Linear::backward2_task(const Task *task,
   assert(acc_input.rect.lo[0] == acc_replica.rect.lo[0]);
   assert(acc_input.rect.hi[1] == acc_replica.rect.hi[1]);
   assert(acc_input.rect.lo[1] == acc_replica.rect.lo[1]);
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
   int num_replica = acc_replica.rect.hi[2] - acc_replica.rect.lo[2] + 1;
   const float *replica_ptr = acc_replica.ptr;
   for (int i = 1; i < num_replica; i++) {

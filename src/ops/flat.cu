@@ -157,7 +157,7 @@ void Flat::forward_task(const Task *task,
   assert(acc_input.rect.volume() == acc_output.rect.volume());
   checkCUDA(cudaMemcpyAsync(acc_output.ptr, acc_input.ptr,
                             acc_input.rect.volume() * sizeof(float),
-                            cudaMemcpyDeviceToDevice));
+                            cudaMemcpyDeviceToDevice, hipGetTaskStream()));
   checkCUDA(cudaDeviceSynchronize());
 }
 
@@ -204,7 +204,7 @@ void Flat::backward_task(const Task *task,
   TensorAccessorR<float, 2> acc_output_grad(
       regions[1], task->regions[1], FID_DATA, ctx, runtime);
   assert(acc_input_grad.rect.volume() == acc_output_grad.rect.volume());
-  apply_add_with_scale<<<GET_BLOCKS(acc_input_grad.rect.volume()), CUDA_NUM_THREADS>>>(
+  apply_add_with_scale<<<GET_BLOCKS(acc_input_grad.rect.volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       acc_input_grad.ptr, acc_output_grad.ptr, acc_input_grad.rect.volume(), alpha);
   //checkCUDA(cudaMemcpyAsync(acc_input_grad.ptr, acc_output_grad.ptr,
   //                          acc_input_grad.rect.volume() * sizeof(float),

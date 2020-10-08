@@ -168,12 +168,12 @@ void SGDOptimizer::update_task(const Task* task,
   // Step 1: gather gradients in the first replica
   for (int i = 1; i < num_replicas; i++) {
     const float* src = w_grad_ptr + i * size;
-    apply_add_with_scale<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
+    apply_add_with_scale<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         (float*) w_grad_ptr, src, size, 1.0f);
   }
   checkCUDA(cudaDeviceSynchronize());
   // Step 2: SGD update
-  sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
+  sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       size, op->lr, op->weight_decay, op->momentum, op->nesterov,
       w_grad_ptr, v_ptr, w_ptr);
   checkCUDA(cudaDeviceSynchronize());
@@ -292,14 +292,14 @@ void AdamOptimizer::update_task(const Task* task,
   // Step 1: gather gradients in the first replica
   for (int i = 1; i < num_replicas; i++) {
     const float* src = w_grad_ptr + i * size;
-    add_kernel<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
+    add_kernel<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         size, 1.0f, src, (float*)w_grad_ptr);
   }
   checkCUDA(cudaDeviceSynchronize());
   //fprintf(stderr, "alpha = %.8lf alpha_t = %.8lf decay = %.8lf\n",
   //        op->alpha, op->alpha_t, op->weight_decay);
   // Step 2: Adam update
-  adam_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
+  adam_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       size, op->alpha_t, op->beta1, op->beta2,
       op->weight_decay, op->epsilon,
       w_grad_ptr, m_ptr, v_ptr, w_ptr);

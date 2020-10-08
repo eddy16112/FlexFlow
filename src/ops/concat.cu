@@ -315,7 +315,7 @@ void Concat::forward_task(const Task *task,
       assert(false);
   }
   for (int i = 0; i < cc->numInputs; i++) {
-    copy_with_stride<<<GET_BLOCKS(input_blk_sizes[i]*num_blocks), CUDA_NUM_THREADS>>>(
+    copy_with_stride<<<GET_BLOCKS(input_blk_sizes[i]*num_blocks), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         output, inputs[i], num_blocks, output_blk_size, input_blk_sizes[i]);
     //printf("output = %x num_blocks=%d output_blk_size=%d input_blk_size[%d]=%d\n",
     //       output, num_blocks, output_blk_size, i, input_blk_sizes[i]);
@@ -344,7 +344,7 @@ void Concat::forward_task(const Task *task,
     const float *input_ptr = acc_input.ptr(rect_input.lo);
     checkCUDA(cudaMemcpyAsync(output_ptr, input_ptr,
                               rect_input.volume() * sizeof(float),
-                              cudaMemcpyDeviceToDevice));
+                              cudaMemcpyDeviceToDevice, hipGetTaskStream()));
     output_ptr += rect_input.volume();
   }
   assert(output_ptr == output_bound);
@@ -475,7 +475,7 @@ void Concat::backward_task(const Task *task,
       assert(false);
   }
   for (int i = 0; i < cc->numInputs; i++) {
-    add_with_stride<<<GET_BLOCKS(input_blk_sizes[i]*num_blocks), CUDA_NUM_THREADS>>>(
+    add_with_stride<<<GET_BLOCKS(input_blk_sizes[i]*num_blocks), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         input_grads[i], output_grad, num_blocks, input_blk_sizes[i], output_blk_size);
     output_grad += input_blk_sizes[i];
   }
@@ -503,7 +503,7 @@ void Concat::backward_task(const Task *task,
     float *input_ptr = acc_input.ptr(rect_input.lo);
     checkCUDA(cudaMemcpyAsync(input_ptr, output_ptr,
                               rect_input.volume() * sizeof(float),
-                              cudaMemcpyDeviceToDevice));
+                              cudaMemcpyDeviceToDevice, hipGetTaskStream()));
     output_ptr += rect_input.volume();
   }
   assert(output_ptr == output_bound);

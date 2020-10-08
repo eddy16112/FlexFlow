@@ -229,9 +229,9 @@ void BatchNorm::init_para_task(const Task *task,
   float *bias_ptr = acc_bias.ptr(rect_bias.lo);
   // init kernel and bias
 #ifdef PARAMETER_ALL_ONES
-  ones_kernel<<<GET_BLOCKS(rect_scale.volume()), CUDA_NUM_THREADS>>>(
+  ones_kernel<<<GET_BLOCKS(rect_scale.volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       scale_ptr, rect_scale.volume());
-  ones_kernel<<<GET_BLOCKS(rect_bias.volume()), CUDA_NUM_THREADS>>>(
+  ones_kernel<<<GET_BLOCKS(rect_bias.volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       bias_ptr, rect_bias.volume());
 #else
   //cudaStream_t stream;
@@ -241,9 +241,9 @@ void BatchNorm::init_para_task(const Task *task,
   //curandSetStream(genGPU, stream);
   //curandSetPseudoRandomGeneratorSeed(genGPU, 1234ULL);
   //curandGenerateUniform(genGPU, scale_ptr, rect_scale.volume());
-  assign_kernel<<<GET_BLOCKS(rect_scale.volume()), CUDA_NUM_THREADS>>>(
+  assign_kernel<<<GET_BLOCKS(rect_scale.volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       scale_ptr, rect_scale.volume(), 1.0f);
-  assign_kernel<<<GET_BLOCKS(rect_bias.volume()), CUDA_NUM_THREADS>>>(
+  assign_kernel<<<GET_BLOCKS(rect_bias.volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       bias_ptr, rect_bias.volume(), 0.0f);
   //curandDestroyGenerator(genGPU);
 #endif
@@ -330,13 +330,13 @@ void BatchNorm::forward_task(const Task *task,
     cudaEventRecord(t_start);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   coord_t numChannels = acc_output.rect.hi[2] - acc_output.rect.lo[2] + 1;
-  assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS>>>(m->runningMean, numChannels, 0.0f);
-  assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS>>>(m->runningVar, numChannels, 0.0f);
+  assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(m->runningMean, numChannels, 0.0f);
+  assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(m->runningVar, numChannels, 0.0f);
   checkCUDNN(cudnnBatchNormalizationForwardTraining(
              m->handle.dnn, m->mode, &alpha, &beta, m->inputTensor, acc_input.ptr,
              m->outputTensor, acc_output.ptr, m->biasTensor, acc_scale.ptr, acc_bias.ptr,
@@ -453,12 +453,12 @@ void BatchNorm::backward_task(const Task *task,
     cudaEventCreate(&t_end);
     cudaEventRecord(t_start);
   }
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
   if (m->relu) {
     int n = rect_output.volume();
-    reluBackward<<<GET_BLOCKS(n), CUDA_NUM_THREADS>>>(output_grad_ptr, output_ptr, n);
+    reluBackward<<<GET_BLOCKS(n), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(output_grad_ptr, output_ptr, n);
   }
   checkCUDNN(cudnnBatchNormalizationBackward(
              m->handle.dnn, m->mode, &alpha, &alpha, &alpha, &alpha,

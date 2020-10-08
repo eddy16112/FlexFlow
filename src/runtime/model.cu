@@ -189,7 +189,7 @@ void UtilityTasks::normalize_images_task(
   size_t h = rect_tensor.hi[1] - rect_tensor.lo[1] + 1;
   float *tensor_ptr = acc_tensor.ptr(rect_tensor.lo);
   const unsigned char *rgb_ptr = acc_rgb.ptr(rect_rgb.lo);
-  apply_normalize<<<GET_BLOCKS(rect_tensor.volume()), CUDA_NUM_THREADS>>>(
+  apply_normalize<<<GET_BLOCKS(rect_tensor.volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       tensor_ptr, rgb_ptr, rect_tensor.volume(), h * w);
 }
 
@@ -222,7 +222,7 @@ void UtilityTasks::init_images_task(const Task *task,
   assert(acc_image.accessor.is_dense_arbitrary(rect_image));
   float *image_ptr = acc_image.ptr(rect_image.lo);
   int num_blocks = (rect_image.volume() + BLKSIZE - 1) / BLKSIZE;
-  init_image_kernel<<<num_blocks, BLKSIZE>>>(image_ptr, rect_image.volume());
+  init_image_kernel<<<num_blocks, BLKSIZE, 0, hipGetTaskStream()>>>(image_ptr, rect_image.volume());
 }
 
 void UtilityTasks::init_labels_task(const Task *task,
@@ -236,7 +236,7 @@ void UtilityTasks::init_labels_task(const Task *task,
   assert(acc_label.accessor.is_dense_arbitrary(rect_label));
   int *label_ptr = acc_label.ptr(rect_label.lo);
   int num_blocks = (rect_label.volume() + BLKSIZE - 1) / BLKSIZE;
-  init_label_kernel<<<num_blocks, BLKSIZE>>>(label_ptr, rect_label.volume());
+  init_label_kernel<<<num_blocks, BLKSIZE, 0, hipGetTaskStream()>>>(label_ptr, rect_label.volume());
 }
 
 //void FFModel::load_images(int batch_id)

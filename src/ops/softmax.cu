@@ -159,9 +159,9 @@ void Softmax::forward_task(const Task *task,
     cudaEventRecord(t_start);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   checkCUDNN(cudnnSoftmaxForward(m->handle.dnn,
                                  CUDNN_SOFTMAX_ACCURATE,
@@ -240,14 +240,14 @@ void Softmax::backward_task(const Task *task,
     cudaEventRecord(t_start);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   checkCUDA(cudaMemcpyAsync(acc_input_grad.ptr, acc_output_grad.ptr,
                             acc_input_grad.rect.volume() * sizeof(float),
-                            cudaMemcpyDeviceToDevice));
+                            cudaMemcpyDeviceToDevice, hipGetTaskStream()));
   if (softmax->profiling) {
     cudaEventRecord(t_end);
     checkCUDA(cudaEventSynchronize(t_end));

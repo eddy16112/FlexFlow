@@ -263,9 +263,9 @@ void Dropout::forward_task(const Task* task,
   float* output_ptr = helperGetTensorPointerWO<float>(
     regions[1], task->regions[1], FID_DATA, ctx, runtime);
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   checkCUDNN(cudnnDropoutForward(m->handle.dnn, m->dropoutDesc,
       m->inputTensor, input_ptr, m->outputTensor, output_ptr,
@@ -357,9 +357,9 @@ void Dropout::backward_task(const Task* task,
     regions[1], task->regions[1], FID_DATA, ctx, runtime);
 
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   checkCUDNN(cudnnDropoutBackward(m->handle.dnn, m->dropoutDesc,
       m->outputTensor, output_grad_ptr, m->inputTensor, input_grad_ptr,

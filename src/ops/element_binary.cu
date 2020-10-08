@@ -289,7 +289,7 @@ void ElementBinary::forward_task(const Task* task,
     regions[1], task->regions[1], FID_DATA, ctx, runtime);
   float* out_ptr = helperGetTensorPointerWO<float>(
     regions[2], task->regions[2], FID_DATA, ctx, runtime);
-  elewise_binary_forward_kernel<<<GET_BLOCKS(out_domain.get_volume()), CUDA_NUM_THREADS>>>(
+  elewise_binary_forward_kernel<<<GET_BLOCKS(out_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       out_domain.get_volume(), alpha, beta, ele->op_type, in1_ptr, in2_ptr, out_ptr);
 }
 
@@ -401,7 +401,7 @@ void ElementBinary::backward_task(const Task *task,
   float* in2_grad_ptr = helperGetTensorPointerRW<float>(
     regions[4], task->regions[4], FID_DATA, ctx, runtime);
 
-  elewise_binary_backward_kernel<<<GET_BLOCKS(out_grad_domain.get_volume()), CUDA_NUM_THREADS>>>(
+  elewise_binary_backward_kernel<<<GET_BLOCKS(out_grad_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
     out_grad_domain.get_volume(), alpha, alpha, ele->op_type, out_grad_ptr, in1_ptr, in2_ptr,
     in1_grad_ptr, in2_grad_ptr);
 }

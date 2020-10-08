@@ -392,16 +392,16 @@ void ElementUnary::forward_task(const Task* task,
     regions[1], task->regions[1], FID_DATA, ctx, runtime);
 
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   if (ele->use_cudnn()) {
     checkCUDNN(cudnnActivationForward(m->handle.dnn, m->actiDesc,
         &alpha, m->inputTensor, input_ptr,
         &beta, m->outputTensor, output_ptr));
   } else {
-    elewise_unary_forward_kernel<<<GET_BLOCKS(output_domain.get_volume()), CUDA_NUM_THREADS>>>(
+    elewise_unary_forward_kernel<<<GET_BLOCKS(output_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
     output_domain.get_volume(), alpha, beta, ele->op_type, input_ptr, output_ptr);
   }
 }
@@ -536,7 +536,7 @@ void ElementUnary::backward_task(const Task* task,
         &alpha, m->outputTensor, output_ptr, m->outputTensor, output_grad_ptr,
         m->inputTensor, input_ptr, &alpha, m->inputTensor, input_grad_ptr));
   } else {
-    elewise_unary_backward_kernel<<<GET_BLOCKS(input_domain.get_volume()), CUDA_NUM_THREADS>>>(
+    elewise_unary_backward_kernel<<<GET_BLOCKS(input_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         input_domain.get_volume(), alpha, alpha, ele->op_type, output_grad_ptr, input_ptr, input_grad_ptr);
   }
 }

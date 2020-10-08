@@ -50,7 +50,7 @@ TensorAccessorW<DT, dim>::TensorAccessorW(PhysicalRegion region,
     assert(acc.accessor.is_dense_arbitrary(rect));
     ptr = acc.ptr(rect);
     // FIXME: currently we zero init the region if not read output
-    assign_kernel<DT><<<GET_BLOCKS(rect.volume()), CUDA_NUM_THREADS>>>(
+    assign_kernel<DT><<<GET_BLOCKS(rect.volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         ptr, rect.volume(), 0.0f);
     checkCUDA(cudaDeviceSynchronize());
   }

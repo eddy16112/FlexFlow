@@ -267,9 +267,9 @@ void Pool2D::forward_task(const Task *task,
       regions[1], task->regions[1], FID_DATA, ctx, runtime,
       false/*readOutput*/);
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   checkCUDNN(cudnnPoolingForward(m->handle.dnn, m->poolDesc,
                                  &alpha, m->inputTensor, acc_input.ptr,
@@ -335,9 +335,9 @@ void Pool2D::backward_task(const Task *task,
     cudaEventRecord(t_start);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
+  // cudaStream_t stream;
+  // checkCUDA(cudaStreamCreate(&stream));
+  checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   checkCUDNN(cudnnPoolingBackward(m->handle.dnn, m->poolDesc,
                                   &alpha, m->outputTensor, acc_output.ptr,
