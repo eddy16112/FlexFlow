@@ -184,7 +184,7 @@ PerfMetrics Metrics::compute_task(const Task *task,
   PerfMetrics* perf;
   PerfMetrics perf_zc;
   checkCUDA(cudaMalloc(&perf, sizeof(PerfMetrics)));
-  checkCUDA(cudaMemcpy(perf, &perf_zc, sizeof(PerfMetrics), cudaMemcpyHostToDevice));
+  checkCUDA(cudaMemcpyAsync(perf, &perf_zc, sizeof(PerfMetrics), cudaMemcpyHostToDevice, hipGetTaskStream()));
 
   if (me->loss_type == LOSS_SPARSE_CATEGORICAL_CROSSENTROPY) {
     TensorAccessorR<float, 2> acc_logit(
@@ -214,7 +214,8 @@ PerfMetrics Metrics::compute_task(const Task *task,
     update_metrics_label_kernel<<<GET_BLOCKS(num_samples), 256, 0, hipGetTaskStream()>>>(
       acc_logit.ptr, acc_label.ptr, perf, *me, num_samples, num_classes);
   }
-  checkCUDA(cudaMemcpy(&perf_zc, perf, sizeof(PerfMetrics), cudaMemcpyDeviceToHost));
+  checkCUDA(cudaMemcpyAsync(&perf_zc, perf, sizeof(PerfMetrics), cudaMemcpyDeviceToHost, hipGetTaskStream()));
+  checkCUDA(cudaStreamSynchronize(hipGetTaskStream()));
   checkCUDA(cudaFree(perf));
   return perf_zc;
 }
