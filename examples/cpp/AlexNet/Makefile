@@ -17,16 +17,17 @@
 DEBUG           ?= 1		# Include debugging symbols
 MAX_DIM         ?= 4		# Maximum number of dimensions
 OUTPUT_LEVEL    ?= LEVEL_DEBUG	# Compile time logging level
-USE_CUDA        ?= 1		# Include CUDA support (requires CUDA)
-USE_GASNET      ?= 0		# Include GASNet support (requires GASNet)
-USE_HDF         ?= 1		# Include HDF5 support (requires HDF5)
+USE_CUDA        ?= 0		# Include CUDA support (requires CUDA)
+USE_GASNET      ?= 1		# Include GASNet support (requires GASNet)
+USE_HDF         ?= 0		# Include HDF5 support (requires HDF5)
 ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
+USE_HIP         ?= 2
 
 # Put the binary file name here
 OUTFILE		?= alexnet
 # List all the application source files here
 GEN_SRC		= alexnet.cc
-GEN_GPU_SRC	= alexnet.cu
+GEN_HIP_SRC	= alexnet.cu
 
 ifndef FF_HOME
 $(error FF_HOME variable is not defined, aborting build)

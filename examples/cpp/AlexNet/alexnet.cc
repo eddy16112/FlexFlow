@@ -78,7 +78,7 @@ void top_level_task(const Task* task,
   t = ff.dense(t, 4096, AC_MODE_RELU/*relu*/);
   t = ff.dense(t, 10);
   t = ff.softmax(t);
-  Optimizer* optimizer = new SGDOptimizer(&ff, 0.001f);
+  Optimizer* optimizer = new SGDOptimizer(&ff, 0.01f);
   std::vector<MetricsType> metrics;
   metrics.push_back(METRICS_ACCURACY);
   metrics.push_back(METRICS_SPARSE_CATEGORICAL_CROSSENTROPY);

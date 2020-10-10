@@ -166,16 +166,19 @@ void SGDOptimizer::update_task(const Task* task,
     }
   }
   // Step 1: gather gradients in the first replica
+  cudaStream_t stream = hipGetTaskStream();
   for (int i = 1; i < num_replicas; i++) {
     const float* src = w_grad_ptr + i * size;
-    apply_add_with_scale<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
+    apply_add_with_scale<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
         (float*) w_grad_ptr, src, size, 1.0f);
   }
+  checkCUDA(cudaStreamSynchronize(stream));
   checkCUDA(cudaDeviceSynchronize());
   // Step 2: SGD update
-  sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
+  sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
       size, op->lr, op->weight_decay, op->momentum, op->nesterov,
       w_grad_ptr, v_ptr, w_ptr);
+  checkCUDA(cudaStreamSynchronize(stream));
   checkCUDA(cudaDeviceSynchronize());
 }
 
