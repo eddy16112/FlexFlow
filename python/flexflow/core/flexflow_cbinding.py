@@ -86,8 +86,9 @@ class OpType(Enum):
   DROPOUT = 2026
   BATCH_MATMUL = 2027
   SPLIT = 2028
-  TRANSPOSE = 2029
-  REVERSE = 2030
+  RESHAPE = 2029
+  TRANSPOSE = 2030
+  REVERSE = 2031
   
 def enum_to_int(enum, enum_item):
   for item in enum:
@@ -357,7 +358,14 @@ class Batch_Matmul(Op):
 class Split(Op):
   def __init__(self, handle):
     super(Split, self).__init__(handle)
-    
+ 
+# -----------------------------------------------------------------------
+# Reshape
+# -----------------------------------------------------------------------
+class Reshape(Op):
+  def __init__(self, handle):
+    super(Reshape, self).__init__(handle)
+
 # -----------------------------------------------------------------------
 # Transpose
 # -----------------------------------------------------------------------
@@ -412,6 +420,8 @@ def convert_op_handle_to_op(op_type, handle):
     return Batch_Matmul(handle)
   elif op_type == OpType.SPLIT:
     return Split(handle)
+  elif op_type == OpType.RESHAPE:
+    return Reshape(handle)
   elif op_type == OpType.TRANSPOSE:
     return Transpose(handle)
   elif op_type == OpType.REVERSE:
@@ -542,7 +552,7 @@ class Tensor(object):
     
   def is_mapped(self):
     return ffc.flexflow_tensor_is_mapped(self.handle)
-    
+
   def __get_raw_ptr(self, ffconfig, data_type):
     assert data_type == self.data_type, "Tensor check data type"
     if (data_type == DataType.DT_FLOAT):    
@@ -564,6 +574,8 @@ class Tensor(object):
       self.dims = (d[2], d[1], d[0])
     elif (self.num_dims == 4):
       self.dims = (d[3], d[2], d[1], d[0])
+    elif (self.num_dims == 5):
+      self.dims = (d[4], d[3], d[2], d[1], d[0])
     else:
       assert 0, "unknown num_dims"
       
@@ -658,6 +670,13 @@ class FFModel(object):
     c_data_type = enum_to_int(DataType, data_type)
     num_dims = len(dims)
     handle = ffc.flexflow_tensor_create(self.handle, num_dims, c_dims, name.encode('utf-8'), c_data_type, create_grad);
+    return Tensor(handle)
+
+  def create_constant(self, dims, name, value, data_type):
+    c_dims = ffi.new("int[]", dims)
+    c_data_type = enum_to_int(DataType, data_type)
+    num_dims = len(dims)
+    handle = ffc.flexflow_constant_create(self.handle, num_dims, c_dims, name.encode('utf-8'), value, c_data_type);
     return Tensor(handle)
     
   def exp(self, x):
@@ -759,12 +778,17 @@ class FFModel(object):
     self.add_layer(OpType.CONCAT)
     return Tensor(handle, owner_op_type=OpType.CONCAT)
     
-  def split(self, input, split, axis):
+  def split(self, input, sizes, axis):
+    if type(sizes) is list:
+      split = sizes
+    else:
+      assert input.dims[axis] % sizes == 0, "Split dimension is not divisible"
+      split = [input.dims[axis] // sizes for i in range(sizes)]
     n = len(split)
-    assert n <= 8, "Please increase 8"
+    assert n <= 32, "Please increase MAX_NUM_OUTPUTS"
     c_split = ffi.new("int[]", split)
-    c_outputs_handle_list = ffi.new("flexflow_tensor_t[8]")
-    ffc.flexflow_model_add_concat(self.handle, input.handle, n, c_outputs_handle_list, c_split, axis)
+    c_outputs_handle_list = ffi.new("flexflow_tensor_t[32]")
+    ffc.flexflow_model_add_split(self.handle, input.handle, n, c_outputs_handle_list, c_split, axis)
     output_tensor_list = []
     for i in range(n):
       output_tensor_list.append(Tensor(c_outputs_handle_list[i], owner_op_type=OpType.SPLIT))
@@ -784,7 +808,13 @@ class FFModel(object):
     handle = ffc.flexflow_model_add_softmax(self.handle, input.handle)
     self.add_layer(OpType.SOFTMAX)
     return Tensor(handle, owner_op_type=OpType.SOFTMAX)
-    
+ 
+  def reshape(self, input, shape):
+    c_shape = ffi.new("int[]", shape)
+    handle = ffc.flexflow_model_add_reshape(self.handle, input.handle, len(shape), c_shape)
+    self.add_layer(OpType.RESHAPE)
+    return Tensor(handle, owner_op_type=OpType.RESHAPE)
+   
   def transpose(self, input, perm):
     c_perm = ffi.new("int[]", perm)
     handle = ffc.flexflow_model_add_transpose(self.handle, input.handle, len(perm), c_perm)

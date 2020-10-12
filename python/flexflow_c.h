@@ -287,7 +287,14 @@ flexflow_model_add_transpose(
   const flexflow_tensor_t input,
   int n,
   int* perm);
-  
+ 
+flexflow_tensor_t
+flexflow_model_add_reshape(
+  flexflow_model_t handle,
+  const flexflow_tensor_t input,
+  int n,
+  int* shape);
+ 
 flexflow_tensor_t
 flexflow_model_add_reverse(
   flexflow_model_t handle,
@@ -300,7 +307,7 @@ flexflow_model_add_relu(
   const flexflow_tensor_t input);
   
 flexflow_tensor_t
-flexflow_model_add_sigmod(
+flexflow_model_add_sigmoid(
   flexflow_model_t handle,
   const flexflow_tensor_t input);
     
@@ -369,6 +376,15 @@ flexflow_tensor_create(
   const char* name,
   enum DataType data_type, 
   bool create_grad /* true */);
+
+flexflow_tensor_t
+flexflow_constant_create(
+  flexflow_model_t model,
+  int num_dims, 
+  const int* dims,
+  const char* name,
+  float value,
+  enum DataType data_type);
 
 void
 flexflow_tensor_destroy(
