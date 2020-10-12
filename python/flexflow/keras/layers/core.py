@@ -19,14 +19,14 @@ import random
 
 from .base_layer import Layer
 from .input_layer import Input
-from .core_op import _DenseOp, _FlattenOp, _EmbeddingOp, _ActivationOp, _DropoutOp
+from .core_op import _DenseOp, _FlattenOp, _EmbeddingOp, _ActivationOp, _DropoutOp, _ReshapeOp
 from flexflow.keras.models.tensor import Tensor
 from flexflow.keras.initializers import Zeros, GlorotUniform, RandomUniform, RandomNormal, DefaultInitializer, Initializer
 
 class Dense(Layer):
   __slots__ = ['out_channels', 'activation', 'use_bias', \
                'kernel_initializer', 'bias_initializer']
-  def __init__(self, units, input_shape=(0,), 
+  def __init__(self, units, input_shape=None, 
                activation=None, use_bias=True,
                kernel_initializer="glorot_uniform",
                bias_initializer="zeros",
@@ -65,16 +65,17 @@ class Dense(Layer):
     
     self.out_channels = units
     self.use_bias = use_bias
-    if (len(input_shape) == 2):
-      op = _DenseOp(self)
-      op.in_channels = input_shape[1]
-      op.input_shape = (input_shape[0], input_shape[1])
-      self.op_list.append(op)
-    elif (len(input_shape) == 1):
-      op = _DenseOp(self)
-      op.in_channels = input_shape[0]
-      op.input_shape = (0, input_shape[0])
-      self.op_list.append(op)
+    if input_shape != None:
+      if len(input_shape) == 2:
+        op = _DenseOp(self)
+        op.in_channels = input_shape[1]
+        op.input_shape = (input_shape[0], input_shape[1])
+        self.op_list.append(op)
+      elif len(input_shape) == 1:
+        op = _DenseOp(self)
+        op.in_channels = input_shape[0]
+        op.input_shape = (0, input_shape[0])
+        self.op_list.append(op)
     if (activation == None):
       self.activation = ff.ActiMode.AC_MODE_NONE
     elif(activation =="relu"):
@@ -168,4 +169,28 @@ class Dropout(Layer):
   def __call__(self, input_tensor):
     op = _DropoutOp(self)
     self.op_list.append(op)
+    return op(input_tensor)
+    
+class Reshape(Layer):
+  def __init__(self, target_shape, input_shape=None, **kwargs):
+    #TODO: target shape does not support -1
+    self.target_shape = (0,) + target_shape
+    # TODO: input shape should not contain batch size for now
+    if input_shape != None:
+      op = _ReshapeOp(self)
+      op.input_shape = (0,) + input_shape
+      self.op_list.append(op)
+      
+    super(Reshape, self).__init__('reshape', 'Reshape', **kwargs) 
+    
+  def __call__(self, input_tensor):
+    if len(self.op_list) == 0:
+      op = _ReshapeOp(self)
+      self.op_list.append(op)
+    else:
+      if self.op_list[0].initialized == True:
+        op = _ReshapeOp(self)
+        self.op_list.append(op)
+      else:
+        op = self.op_list[0]
     return op(input_tensor)

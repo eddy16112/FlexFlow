@@ -596,9 +596,29 @@ flexflow_model_add_transpose(
     perm_vec.push_back(perm[i]);
   }
   *tensor = handle->transpose(*input, perm_vec);
-  DEBUG_PRINT("[Softmax] new Tensor %p", tensor);
+  DEBUG_PRINT("[Transpose] new Tensor %p", tensor);
   return FFCObjectWrapper::wrap(tensor);   
 }
+
+flexflow_tensor_t
+flexflow_model_add_reshape(
+  flexflow_model_t handle_,
+  const flexflow_tensor_t input_,
+  int n,
+  int* shape)
+{
+  FFModel *handle = FFCObjectWrapper::unwrap(handle_);
+  Tensor *input = FFCObjectWrapper::unwrap(input_);
+  Tensor *tensor = new Tensor();
+  std::vector<int> shape_vec;
+  for (int i = 0; i < n; i++) {
+    shape_vec.push_back(shape[i]);
+  }
+  *tensor = handle->reshape(*input, shape_vec);
+  DEBUG_PRINT("[Reshape] new Tensor %p", tensor);
+  return FFCObjectWrapper::wrap(tensor);   
+}
+
 
 flexflow_tensor_t
 flexflow_model_add_reverse(
@@ -628,7 +648,7 @@ flexflow_model_add_relu(
 }
   
 flexflow_tensor_t
-flexflow_model_add_sigmod(
+flexflow_model_add_sigmoid(
   flexflow_model_t handle_,
   const flexflow_tensor_t input_)
 {
@@ -770,20 +790,57 @@ flexflow_tensor_create(
 {
   Tensor *tensor = new Tensor();
   FFModel *model = FFCObjectWrapper::unwrap(model_);
-  if (num_dims == 4) {
-    *tensor = model->create_tensor<4>(dims, name, data_type, create_grad);
-    DEBUG_PRINT("[Tensor] new 4D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
+  if (num_dims == 2) {
+    *tensor = model->create_tensor<2>(dims, name, data_type, create_grad);
+    DEBUG_PRINT("[Tensor] new 2D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
   } else if (num_dims == 3) {
     *tensor = model->create_tensor<3>(dims, name, data_type, create_grad);
     DEBUG_PRINT("[Tensor] new 3D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
-  } else if (num_dims == 2) {
-    *tensor = model->create_tensor<2>(dims, name, data_type, create_grad);
-    DEBUG_PRINT("[Tensor] new 2D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
+  } else if (num_dims == 4) {
+    *tensor = model->create_tensor<4>(dims, name, data_type, create_grad);
+    DEBUG_PRINT("[Tensor] new 4D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
+#if MAX_DIM >= 5
+  } else if (num_dims == 5) {
+     *tensor = model->create_tensor<5>(dims, name, data_type, create_grad);
+    DEBUG_PRINT("[Tensor] new 5D %p (%d, %d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3], tensor->adim[4]);
+#endif
   } else {
     assert(0);
   }
   return FFCObjectWrapper::wrap(tensor);
 }
+
+flexflow_tensor_t
+flexflow_constant_create(
+  flexflow_model_t model_,
+  int num_dims,
+  const int* dims,
+  const char* name,
+  float value,
+  enum DataType data_type)
+{
+  Tensor *tensor = new Tensor();
+  FFModel *model = FFCObjectWrapper::unwrap(model_);
+  if (num_dims == 2) {
+    *tensor = model->create_constant<2>(dims, name, value, data_type);
+    DEBUG_PRINT("[Tensor] new 2D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
+  } else if (num_dims == 3) {
+    *tensor = model->create_constant<3>(dims, name, value, data_type);
+    DEBUG_PRINT("[Tensor] new 3D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
+  } else if (num_dims == 4) {
+    *tensor = model->create_constant<4>(dims, name, value, data_type);
+    DEBUG_PRINT("[Tensor] new 4D %p (%d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3]);
+#if MAX_DIM >= 5
+  } else if (num_dims == 5) {
+    *tensor = model->create_constant<5>(dims, name, value, data_type);
+    DEBUG_PRINT("[Tensor] new 5D %p (%d, %d, %d, %d, %d)", tensor, tensor->adim[0], tensor->adim[1], tensor->adim[2], tensor->adim[3], tensor->adim[4]);
+#endif
+  } else {
+    assert(0);
+  }
+  return FFCObjectWrapper::wrap(tensor);
+}
+
 
 void
 flexflow_tensor_destroy(

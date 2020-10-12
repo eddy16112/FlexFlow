@@ -165,3 +165,25 @@ class _DropoutOp(_Op):
     
   def _verify_inout_tensor_shape(self, input_tensor, output_tensor):
     pass
+    
+class _ReshapeOp(_Op):
+  __slots__ = []
+  def __init__(self, layer):
+    super(_ReshapeOp, self).__init__(layer) 
+      
+  def verify_meta_data(self):
+    pass
+    
+  def get_summary(self):
+    summary = "%s%s\t\t%s%s\n"%(self._get_summary_name(), self.output_shape, self.input_shape, self._get_summary_connected_to())
+    return summary
+    
+  def __call__(self, input_tensor):
+    return self._connect_layer_1_input_1_output(input_tensor)
+    
+  def _calculate_inout_shape(self, input_tensor):
+    self.input_shape = input_tensor.batch_shape
+    self.output_shape = self.layer.target_shape
+    
+  def _verify_inout_tensor_shape(self, input_tensor, output_tensor):
+    pass

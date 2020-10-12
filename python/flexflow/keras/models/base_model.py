@@ -17,7 +17,7 @@ import flexflow.core as ff
 from flexflow.core.flexflow_logger import fflogger
 
 from .tensor import Tensor
-from flexflow.keras.layers import _Conv2DOp, _Pooling2DOp, _FlattenOp, _DenseOp, _ActivationOp, _ConcatenateOp, _AddOp, _SubtractOp, _MultiplyOp, _DropoutOp, _BatchNormalizationOp, _EmbeddingOp
+from flexflow.keras.layers import _Conv2DOp, _Pooling2DOp, _FlattenOp, _DenseOp, _ActivationOp, _ConcatenateOp, _AddOp, _SubtractOp, _MultiplyOp, _DropoutOp, _BatchNormalizationOp, _EmbeddingOp, _ReshapeOp
 from flexflow.keras.optimizers import SGD, Adam 
 from flexflow.keras.callbacks import Callback, LearningRateScheduler, VerifyMetrics, EpochVerifyMetrics 
 from flexflow.keras import losses as keras_losses
@@ -464,6 +464,7 @@ class BaseModel(object):
   def _create_flexflow_layers(self):
     out_t = 0
     for op in self._ops:
+      op.set_batch_size(self._ffconfig.get_batch_size())
       
       if len(op.layer.op_list) == 1:
         shared_op = None
@@ -507,11 +508,12 @@ class BaseModel(object):
         out_t = self._ffmodel.batch_norm(op.input_tensors[0].ffhandle)
       elif isinstance(op, _EmbeddingOp) == True:
         out_t = self._ffmodel.embedding(op.input_tensors[0].ffhandle, op.layer.input_dim, op.layer.out_channels, ff.AggrMode.AGGR_MODE_SUM, shared_op, op.layer.embeddings_initializer.ffhandle)
+      elif isinstance(op, _ReshapeOp) == True:
+        out_t = self._ffmodel.reshape(op.input_tensors[0].ffhandle, op.output_shape)
       else:
         assert 0, "unknow layer"
 
       op.output_tensors[0].ffhandle = out_t
-      op.set_batch_size(self._ffconfig.get_batch_size())
 
       assert op.ffhandle == None, "layer handle is inited"
       op.ffhandle = self._ffmodel.get_layer_by_id(op.op_id)
