@@ -254,7 +254,7 @@ void Reshape::backward_task(const Task *task,
     regions[0], task->regions[0], FID_DATA, ctx, runtime);
   float* in_grad_ptr = helperGetTensorPointerRW<float>(
     regions[1], task->regions[1], FID_DATA, ctx, runtime);
-  apply_add_with_scale<<<GET_BLOCKS(in_grad_domain.get_volume()), CUDA_NUM_THREADS, hipGetTaskStream()>>>(
+  apply_add_with_scale<<<GET_BLOCKS(in_grad_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       in_grad_ptr, out_grad_ptr, in_grad_domain.get_volume(), alpha);
 }
 
