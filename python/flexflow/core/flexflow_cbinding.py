@@ -470,11 +470,14 @@ class FFConfig(object):
 
 class Tensor(object):
   __slots__ = ['p_handle', 'handle', '_handle', 'num_dims', 'dims', 'data_type', 'owner_op', 'owner_op_type', 'mapped']
-  def __init__(self, handle, deallocate=True, owner_op_type=None):
-    if (ffi.typeof(handle) == ffi.typeof('flexflow_tensor_t')):
+  def __init__(self, handle, deallocate=True, owner_op_type=None, p_handle=None):
+    if handle == None and ffi.typeof(p_handle) == ffi.typeof('flexflow_tensor_t*'):
+      self.p_handle = p_handle
+      self.handle = self.p_handle[0]
+    elif handle != None and ffi.typeof(handle) == ffi.typeof('flexflow_tensor_t'):
       self.p_handle = 0
       self.handle = handle
-    elif (ffi.typeof(handle) == ffi.typeof('flexflow_parameter_t')):
+    elif handle != None and ffi.typeof(handle) == ffi.typeof('flexflow_parameter_t'):
       self.p_handle = ffi.new('flexflow_tensor_t *')
       self.p_handle.impl = handle.impl
       self.handle = self.p_handle[0]
@@ -767,11 +770,12 @@ class FFModel(object):
     handle = ffc.flexflow_model_add_dense_no_inout(self.handle,  in_dim, out_dim, c_activation, use_bias, kernel_init_handle, bias_init_handle)
     return Linear(handle)
     
-  def concat(self, tensor_list, axis):
+  def concat(self, tensors, axis):
+    assert type(tensors) is list, "tensors should be a list"
     tensor_handle_list = []
-    n = 0
-    for tensor in tensor_list:
-      n = n + 1
+    n = len(tensors)
+    assert n <= 32, "Please increase MAX_NUM_INPUTS"
+    for tensor in tensors:
       tensor_handle_list.append(tensor.handle)
     c_tensor_handle_list = ffi.new("flexflow_tensor_t[]", tensor_handle_list)
     handle = ffc.flexflow_model_add_concat(self.handle, n, c_tensor_handle_list, axis)
@@ -791,8 +795,11 @@ class FFModel(object):
     ffc.flexflow_model_add_split(self.handle, input.handle, n, c_outputs_handle_list, c_split, axis)
     output_tensor_list = []
     for i in range(n):
-      output_tensor_list.append(Tensor(c_outputs_handle_list[i], owner_op_type=OpType.SPLIT))
+      tensor_p_handle = ffi.new("flexflow_tensor_t*")
+      tensor_p_handle.impl = c_outputs_handle_list[i].impl
+      output_tensor_list.append(Tensor(None, owner_op_type=OpType.SPLIT, p_handle=tensor_p_handle))
     self.add_layer(OpType.SPLIT)
+    del c_outputs_handle_list
     return output_tensor_list
     
   def flat(self, input):
