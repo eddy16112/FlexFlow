@@ -513,8 +513,10 @@ flexflow_model_add_concat(
   for (int i = 0; i < n; i++ ) {
     Tensor *t = FFCObjectWrapper::unwrap(input_[i]);
     input_vec.push_back(*t);
-    sprintf(cbuffer_ptr, "%p ", t);
-    cbuffer_ptr +=15; 
+    if (i < 10) {
+      sprintf(cbuffer_ptr, "%p ", t);
+      cbuffer_ptr += 15; 
+    }
   }
   *tensor = handle->concat(n, input_vec.data(), axis);
   sprintf(cbuffer_ptr, ", concat new Tensor %p", tensor);
@@ -535,13 +537,30 @@ flexflow_model_add_split(
   Tensor *input = FFCObjectWrapper::unwrap(input_);
   std::vector<int> split_vec;
   Tensor *outputs = new Tensor[n];
+  Tensor **outputs_aop = new Tensor*[n];
   for (int i = 0; i < n; i++ ) {
     split_vec.push_back(split[i]);
   }
   handle->split(*input, outputs, split_vec, axis);
   for (int i = 0; i < n; i++ ) {
-    outputs_[i] = FFCObjectWrapper::wrap(&(outputs[i]));
+    outputs_aop[i] = new Tensor(); 
+    *(outputs_aop[i]) = outputs[i];    
+    outputs_[i] = FFCObjectWrapper::wrap(outputs_aop[i]);
   }
+  char cbuffer[256];
+  char *cbuffer_ptr = cbuffer;
+  sprintf(cbuffer_ptr, "[Split] input tensor %p output tensors ", input);
+  cbuffer_ptr += 51;
+  for (int i = 0; i < n; i++) {
+    sprintf(cbuffer_ptr, "%p ", outputs_[i].impl);
+    cbuffer_ptr += 15;
+    if (i >= 10) {
+      break;
+    }
+  }
+  DEBUG_PRINT("%s", cbuffer);
+  delete[] outputs;
+  delete[] outputs_aop;
 }
 
 flexflow_tensor_t
