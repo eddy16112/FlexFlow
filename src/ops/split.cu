@@ -190,7 +190,7 @@ void Split::forward_task(const Task *task,
   }
   assert(total_volume == in_domain.get_volume());
   for (int i = 0; i < split->numOutputs; i++) {
-    copy_with_stride<<<GET_BLOCKS(out_blk_size[i]*num_blks), CUDA_NUM_THREADS>>>(
+    copy_with_stride<<<GET_BLOCKS(out_blk_size[i]*num_blks), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         out_ptr[i], in_ptr, num_blks, out_blk_size[i], in_blk_size);
     in_ptr += out_blk_size[i];
   }
@@ -251,7 +251,7 @@ void Split::backward_task(const Task *task,
   }
   assert(total_volume == in_grad_domain.get_volume());
   for (int i = 0; i < split->numOutputs; i++) {
-    add_with_stride<<<GET_BLOCKS(out_blk_size[i]*num_blks), CUDA_NUM_THREADS>>>(
+    add_with_stride<<<GET_BLOCKS(out_blk_size[i]*num_blks), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
         in_grad_ptr, out_grad_ptr[i], num_blks, in_blk_size, out_blk_size[i]);
     in_grad_ptr += out_blk_size[i];
   }

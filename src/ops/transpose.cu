@@ -201,7 +201,7 @@ void Transpose::forward_task(const Task* task,
     info.out_strides[i] = (i == 0) ? 1 : info.out_strides[i-1] * out_dim_size;
     info.perm[i] = transpose->perm[i];
   }
-  transpose_simple_kernel<<<GET_BLOCKS(out_domain.get_volume()), CUDA_NUM_THREADS>>>(
+  transpose_simple_kernel<<<GET_BLOCKS(out_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       out_domain.get_volume(), in_ptr, out_ptr, info, 0.0f/*beta*/);
 }
 
@@ -254,7 +254,7 @@ void Transpose::backward_task(const Task* task,
     info.out_strides[i] = (i == 0) ? 1 : info.out_strides[i-1] * out_dim_size;
     info.perm[transpose->perm[i]] = i;
   }
-  transpose_simple_kernel<<<GET_BLOCKS(in_grad_domain.get_volume()), CUDA_NUM_THREADS>>>(
+  transpose_simple_kernel<<<GET_BLOCKS(in_grad_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       in_grad_domain.get_volume(), out_grad_ptr, in_grad_ptr, info, 1.0f/*beta*/);
 }
 

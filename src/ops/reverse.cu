@@ -178,7 +178,7 @@ void Reverse::forward_task(const Task* task,
     else
       num_out_blks *= out_domain.hi()[i] - out_domain.lo()[i] + 1;
   }
-  reverse_forward_kernel<<<GET_BLOCKS(out_domain.get_volume()), CUDA_NUM_THREADS>>>(
+  reverse_forward_kernel<<<GET_BLOCKS(out_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       in_ptr, out_ptr, num_out_blks, reverse_dim_size, in_blk_size);
 }
 
@@ -230,7 +230,7 @@ void Reverse::backward_task(const Task* task,
     else
       num_out_blks *= in_grad_domain.hi()[i] - in_grad_domain.lo()[i] + 1;
   }
-  reverse_forward_kernel<<<GET_BLOCKS(in_grad_domain.get_volume()), CUDA_NUM_THREADS>>>(
+  reverse_forward_kernel<<<GET_BLOCKS(in_grad_domain.get_volume()), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
       out_grad_ptr, in_grad_ptr, num_out_blks, reverse_dim_size, in_blk_size);
 }
 
