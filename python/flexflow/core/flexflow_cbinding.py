@@ -20,7 +20,7 @@ import os
 import subprocess
 import numpy as np
 from .flexflow_logger import fflogger
-from enum import Enum
+from .flexflow_type import ActiMode, AggrMode, PoolType, DataType, LossType, MetricsType, OpType, enum_to_int, int_to_enum
 
 assert 'FF_HOME' in os.environ
 _flexflow_cxxheader_dir= os.path.join(os.environ['FF_HOME'], 'include')
@@ -30,73 +30,6 @@ _flexflow_cheader = subprocess.check_output(['gcc', '-I', _flexflow_cxxheader_di
 ffi = cffi.FFI()
 ffi.cdef(_flexflow_cheader)
 ffc = ffi.dlopen(None)
-
-class ActiMode(Enum):
-  AC_MODE_NONE = 10
-  AC_MODE_RELU = 11
-  AC_MODE_SIGMOID = 12
-  AC_MODE_TANH = 13
-  
-class AggrMode(Enum):
-  AGGR_MODE_NONE = 20
-  AGGR_MODE_SUM = 21
-  AGGR_MODE_AVG = 22
-
-class PoolType(Enum):
-  POOL_MAX = 30
-  POOL_AVG = 31
-  
-class DataType(Enum):
-  DT_FLOAT = 40
-  DT_DOUBLE = 41
-  DT_INT32 = 42
-  DT_INT64 = 43
-  DT_BOOLEAN = 44
-  
-class LossType(Enum):
-  LOSS_CATEGORICAL_CROSSENTROPY = 50
-  LOSS_SPARSE_CATEGORICAL_CROSSENTROPY = 51
-  LOSS_MEAN_SQUARED_ERROR_AVG_REDUCE = 52
-  LOSS_MEAN_SQUARED_ERROR_SUM_REDUCE = 53
-  
-class MetricsType(Enum):
-  METRICS_ACCURACY = 1001
-  METRICS_CATEGORICAL_CROSSENTROPY = 1002
-  METRICS_SPARSE_CATEGORICAL_CROSSENTROPY = 1004
-  METRICS_MEAN_SQUARED_ERROR = 1008
-  METRICS_ROOT_MEAN_SQUARED_ERROR = 1016
-  METRICS_MEAN_ABSOLUTE_ERROR=1032
-  
-class OpType(Enum):
-  CONV2D = 2011
-  EMBEDDING = 2012
-  POOL2D = 2013
-  LINEAR = 2014
-  SOFTMAX = 2015
-  CONCAT = 2016
-  FLAT = 2017
-  ELEMENT_UNARY = 2018
-  ELEMENT_BINARY = 2019
-  MSELOSS = 2020
-  BATCH_NORM = 2021
-  RELU = 2022
-  SIGMOID = 2023
-  TANH = 2024
-  ELU = 2025
-  DROPOUT = 2026
-  BATCH_MATMUL = 2027
-  SPLIT = 2028
-  RESHAPE = 2029
-  TRANSPOSE = 2030
-  REVERSE = 2031
-  
-def enum_to_int(enum, enum_item):
-  for item in enum:
-    if (enum_item == item):
-      return item.value
-  
-  assert 0, "unknow enum type " + str(enum_item) + " " + str(enum)    
-  return -1
   
 def get_datatype_size(datatype):
   if (datatype == DataType.DT_FLOAT):
@@ -147,18 +80,39 @@ class Op(object):
     ffc.flexflow_op_add_to_model(self.handle, model.handle)
 
 # -----------------------------------------------------------------------
-# ElementBinary
+# Exp
 # -----------------------------------------------------------------------
-class ElementBinary(Op):
+class Exp(Op):
   def __init__(self, handle):
-    super(ElementBinary, self).__init__(handle) 
+    super(Exp, self).__init__(handle) 
     
 # -----------------------------------------------------------------------
-# ElementUnary
+# Add
 # -----------------------------------------------------------------------
-class ElementUnary(Op):
+class Add(Op):
   def __init__(self, handle):
-    super(ElementUnary, self).__init__(handle) 
+    super(Add, self).__init__(handle) 
+    
+# -----------------------------------------------------------------------
+# Subtract
+# -----------------------------------------------------------------------
+class Subtract(Op):
+  def __init__(self, handle):
+    super(Subtract, self).__init__(handle) 
+    
+# -----------------------------------------------------------------------
+# Multiple
+# -----------------------------------------------------------------------
+class Multiple(Op):
+  def __init__(self, handle):
+    super(Multiple, self).__init__(handle) 
+    
+# -----------------------------------------------------------------------
+# Divide
+# -----------------------------------------------------------------------
+class Divide(Op):
+  def __init__(self, handle):
+    super(Divide, self).__init__(handle) 
     
 # -----------------------------------------------------------------------
 # Conv2D
@@ -398,10 +352,16 @@ def convert_op_handle_to_op(op_type, handle):
     return Concat(handle)
   elif op_type == OpType.SOFTMAX:
     return Softmax(handle)
-  elif op_type == OpType.ELEMENT_UNARY:
-    return ElementUnary(handle)
-  elif op_type == OpType.ELEMENT_BINARY:
-    return ElementBinary(handle)
+  elif op_type == OpType.EXP:
+    return Exp(handle)
+  elif op_type == OpType.ADD:
+    return Add(handle)
+  elif op_type == OpType.SUBTRACT:
+    return Subtract(handle)
+  elif op_type == OpType.MULTIPLY:
+    return Multiply(handle)
+  elif op_type == OpType.DIVIDE:
+    return Divide(handle)
   elif op_type == OpType.MSELOSS:
     return MSELoss(handle)
   elif op_type == OpType.RELU:
@@ -684,28 +644,28 @@ class FFModel(object):
     
   def exp(self, x):
     handle = ffc.flexflow_model_add_exp(self.handle, x.handle)
-    self.add_layer(OpType.ELEMENT_UNARY)
-    return Tensor(handle, owner_op_type=OpType.ELEMENT_UNARY)
+    self.add_layer(OpType.EXP)
+    return Tensor(handle, owner_op_type=OpType.EXP)
     
   def add(self, x, y):
     handle = ffc.flexflow_model_add_add(self.handle, x.handle, y.handle)
-    self.add_layer(OpType.ELEMENT_BINARY)
-    return Tensor(handle, owner_op_type=OpType.ELEMENT_BINARY)
+    self.add_layer(OpType.ADD)
+    return Tensor(handle, owner_op_type=OpType.ADD)
   
   def subtract(self, x, y):
     handle = ffc.flexflow_model_add_subtract(self.handle, x.handle, y.handle)
-    self.add_layer(OpType.ELEMENT_BINARY)
-    return Tensor(handle, owner_op_type=OpType.ELEMENT_BINARY)
+    self.add_layer(OpType.SUBTRACT)
+    return Tensor(handle, owner_op_type=OpType.SUBTRACT)
     
   def multiply(self, x, y):
     handle = ffc.flexflow_model_add_multiply(self.handle, x.handle, y.handle)
-    self.add_layer(OpType.ELEMENT_BINARY)
-    return Tensor(handle, owner_op_type=OpType.ELEMENT_BINARY)
+    self.add_layer(OpType.MULTIPLY)
+    return Tensor(handle, owner_op_type=OpType.MULTIPLY)
     
   def divide(self, x, y):
     handle = ffc.flexflow_model_add_divide(self.handle, x.handle, y.handle)
-    self.add_layer(OpType.ELEMENT_BINARY)
-    return Tensor(handle, owner_op_type=OpType.ELEMENT_BINARY)
+    self.add_layer(OpType.DIVIDE)
+    return Tensor(handle, owner_op_type=OpType.DIVIDE)
     
   def conv2d(self, input, out_channels, kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w, activation=ActiMode.AC_MODE_NONE, use_bias=True, shared_op=None, kernel_initializer=None, bias_initializer=None):
     shared_op_handle = self.__get_op_handle(shared_op)
@@ -825,8 +785,8 @@ class FFModel(object):
   def transpose(self, input, perm):
     c_perm = ffi.new("int[]", perm)
     handle = ffc.flexflow_model_add_transpose(self.handle, input.handle, len(perm), c_perm)
-    self.add_layer(OpType.REVERSE)
-    return Tensor(handle, owner_op_type=OpType.REVERSE)
+    self.add_layer(OpType.TRANSPOSE)
+    return Tensor(handle, owner_op_type=OpType.TRANSPOSE)
     
   def reverse(self, input, axis):
     handle = ffc.flexflow_model_add_reverse(self.handle, input.handle, axis)
@@ -927,6 +887,134 @@ class FFModel(object):
   def get_perf_metrics(self):
     handle = ffc.flexflow_model_get_perf_metrics(self.handle)
     return PerfMetrics(handle)
+    
+  def construct_model_from_file(self, input_tensors, filename):
+    tensor_dict = {}
+    output_tensors = []
+    in_file = open(filename, "r")
+    lines = in_file.readlines()
+    input_idx = 0
+    for line in lines:
+      items = line.strip().split(",")
+      assert len(items) >= 3, "wrong format"
+      items = [i.strip() for i in items]
+      print(items)
+      
+      #get op name
+      op_name = items[0]
+      
+      #get previous ops
+      prev_ops_list = items[1].split(":")
+      prev_ops_list = [i.strip() for i in prev_ops_list]
+      for i in prev_ops_list:
+        if i == "":
+          prev_ops_list.remove(i)
+      
+      #get op type
+      op_type = int_to_enum(OpType, int(items[2]))
+      
+      if op_type == OpType.LINEAR:
+        assert len(items) == 6, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        if prev_ops_list[0] == "input":
+          input_tensor = input_tensors[input_idx]
+          input_idx += 1
+        else:
+          input_tensor = tensor_dict[prev_ops_list[0]]  
+        od = int(items[3])
+        activ = int_to_enum(ActiMode, int(items[4]))
+        bias = bool(int(items[5]))
+        tensor_dict[op_name] = self.dense(input=input_tensor, out_dim=od, activation=activ, use_bias=bias)
+     
+      elif op_type == OpType.CONV2D:
+        assert len(items) == 12, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        if prev_ops_list[0] == "input":
+          input_tensor = input_tensors[input_idx]
+          input_idx += 1
+        else:
+          input_tensor = tensor_dict[prev_ops_list[0]]
+        oc = int(items[3])
+        kh = int(items[4])
+        kw = int(items[5])
+        sh = int(items[6])
+        sw = int(items[7])
+        ph = int(items[8])
+        pw = int(items[9])
+        activ = int_to_enum(ActiMode, int(items[10]))
+        bias = bool(int(items[11]))
+        tensor_dict[op_name] = self.conv2d(input=input_tensor, out_channels=oc, kernel_h=kh, kernel_w=kw, stride_h=sh, stride_w=sw, padding_h=ph, padding_w=pw, activation=activ, use_bias=bias)
+        
+      elif op_type == OpType.POOL2D:
+        assert len(items) == 8, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        input_tensor = tensor_dict[prev_ops_list[0]]
+        kh = int(items[3])
+        sh = int(items[4])
+        ph = int(items[5])
+        pt = int_to_enum(PoolType, int(items[6]))
+        activ = int_to_enum(ActiMode, int(items[7]))
+        tensor_dict[op_name] = self.pool2d(input=input_tensor, kernel_h=kh, kernel_w=kh, stride_h=sh, stride_w=sh, padding_h=ph, padding_w=ph, pool_type=pt, activation=activ)
+
+      elif op_type == OpType.DROPOUT:
+        assert len(items) == 4, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        input_tensor = tensor_dict[prev_ops_list[0]]
+        r = int(item[3])
+        tensor_dict[op_name] = self.dropout(input=input_tensor, rate=r, seed=0)
+
+      elif op_type == OpType.FLAT:
+        assert len(items) == 3, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        input_tensor = tensor_dict[prev_ops_list[0]]
+        tensor_dict[op_name] = self.flat(input=input_tensor)
+        
+      elif op_type == OpType.RELU:
+        assert len(items) == 3, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        input_tensor = tensor_dict[prev_ops_list[0]]
+        tensor_dict[op_name] = self.relu(input=input_tensor)
+        
+      elif op_type == OpType.SIGMOID:
+        assert len(items) == 3, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        input_tensor = tensor_dict[prev_ops_list[0]]
+        tensor_dict[op_name] = self.sigmoid(input=input_tensor)
+        
+      elif op_type == OpType.TANH:
+        assert len(items) == 3, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        input_tensor = tensor_dict[prev_ops_list[0]]
+        tensor_dict[op_name] = self.tanh(input=input_tensor)
+        
+      elif op_type == OpType.ELU:
+        assert len(items) == 3, "wrong format"
+        assert len(prev_ops_list) == 1, "wrong format"
+        input_tensor = tensor_dict[prev_ops_list[0]]
+        tensor_dict[op_name] = self.elu(input=input_tensor)
+      
+      elif op_type == OpType.CONCAT:
+        assert len(items) == 4, "wrong format"
+        assert len(prev_ops_list) >= 2, "wrong format"
+        input_tensors = []
+        for i in prev_ops_list:
+          input_tensors.append(tensor_dict[i])
+        ax = int(items[3])
+        tensor_dict[op_name] = self.concat(tensors=input_tensors, axis=ax)
+      
+      elif op_type == OpType.OUTPUT:
+        tensor_dict[op_name] = []
+        for i in prev_ops_list:
+          tensor_dict[op_name].append(tensor_dict[i])
+        output_tensors = tensor_dict[op_name]
+        #print(output_tensors[1].handle.impl)
+        
+      else:
+        assert 0, "unknown op"
+      
+    return output_tensors
+      
+      
     
   def __get_initializer_handle(self, initializer):
     if (initializer == None):
