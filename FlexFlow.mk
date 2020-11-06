@@ -50,7 +50,7 @@ GEN_HIP_SRC	+= ${FF_HOME}/src/ops/conv_2d.cu\
 
 INC_FLAGS	+= -I${FF_HOME}/include/ -I${CUDNN}/include
 
-LD_FLAGS        += -lcudnn -lcublas -lcurand -lprotobuf -L/usr/local/lib -L${CUDNN}/lib64 #-mavx2 -mfma -mf16c
+#LD_FLAGS        += -lcudnn -lcublas -lcurand -lprotobuf -L/usr/local/lib -L${CUDNN}/lib64 #-mavx2 -mfma -mf16c
 CC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM)
 NVCC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM)
 HIPCC_FLAGS     ?= -DMAX_TENSOR_DIM=$(MAX_DIM)
@@ -82,7 +82,7 @@ endif
 
 INC_FLAGS	+= -I$(PROTOBUF_DIR)/include
 #LD_FLAGS	+= -L${FF_HOME}/protobuf/src/.libs
-LD_FLAGS	?= -lprotobuf -lcudnn -lcublas -lcurand -L$(PROTOBUF_DIR)/lib -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64
+LD_FLAGS	+= -lprotobuf -lcudnn -lcublas -lcurand -L$(PROTOBUF_DIR)/lib -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64
 
 #ifndef HDF5
 #HDF5_inc	?= /usr/include/hdf5/serial

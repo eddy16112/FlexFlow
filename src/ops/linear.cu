@@ -843,7 +843,6 @@ void Linear::backward2_task_with_dim(const Task *task,
   // checkCUDA(cudaStreamCreate(&stream));
   checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
   checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
-  checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
   int num_replica = acc_replica.rect.hi[NDIM] - acc_replica.rect.lo[NDIM] + 1;
   const float *replica_ptr = acc_replica.ptr;
   for (int i = 1; i < num_replica; i++) {
