@@ -541,6 +541,13 @@ Tensor FFModel::create_tensor(const int dims[],
       RegionRequirement(tensor.part, 0/*projection id*/,
                         WRITE_ONLY, EXCLUSIVE, tensor.region));
   launcher.add_field(0, FID_DATA);
+  if (create_grad) {
+    launcher.add_region_requirement(
+        RegionRequirement(tensor.part_grad, 0/*projection id*/,
+                          WRITE_ONLY, EXCLUSIVE, tensor.region_grad));
+    launcher.add_field(1, FID_DATA);
+  }
+  runtime->execute_index_space(ctx, launcher);
   return tensor;
 }
 
@@ -1425,7 +1432,7 @@ void register_internal_tasks()
     TaskVariantRegistrar registrar(ELEMENTBINARY_INIT_TASK_ID, "ElementWiseBinary Init");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
-    Runtime::preregister_task_variant<ElementBinary::init_task>(
+    Runtime::preregister_task_variant<OpMeta*, ElementBinary::init_task>(
         registrar, "ElementWiseBinary Init Task");
   }
   {
