@@ -164,8 +164,8 @@ void SGDOptimizer::nccl_update_task(
 
   // Use NCCL to sync gradients
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  cudaStream_t stream = hipGetTaskStream();
+  //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
       ncclSum, handler.nccl, stream));
 #elif
@@ -173,7 +173,7 @@ void SGDOptimizer::nccl_update_task(
       ncclSum, handler.nccl));
 #endif
   // Step 2: SGD update
-  sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
+  sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
       size, op->lr, op->weight_decay, op->momentum, op->nesterov,
       w_grad_ptr, v_ptr, w_ptr);
   checkCUDA(cudaDeviceSynchronize());
@@ -337,8 +337,8 @@ void AdamOptimizer::nccl_update_task(const Task* task,
   }
   // Use NCCL to sync gradients
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  cudaStream_t stream = hipGetTaskStream();
+  //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
       ncclSum, handler.nccl, stream));
 #elif
@@ -348,7 +348,7 @@ void AdamOptimizer::nccl_update_task(const Task* task,
   //fprintf(stderr, "alpha = %.8lf alpha_t = %.8lf decay = %.8lf\n",
   //        op->alpha, op->alpha_t, op->weight_decay);
   // Step 2: Adam update
-  adam_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
+  adam_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
       size, op->alpha_t, op->beta1, op->beta2,
       op->weight_decay, op->epsilon,
       w_grad_ptr, m_ptr, v_ptr, w_ptr);
