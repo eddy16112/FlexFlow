@@ -41,9 +41,9 @@ void sgd_update(int count, float lr, float weight_decay,
 }
 
 __host__
-void SGDOptimizer::update_task(const Task* task,
-                               const std::vector<PhysicalRegion>& regions,
-                               Context ctx, Runtime* runtime)
+void SGDOptimizer::ps_update_task(const Task* task,
+                                  const std::vector<PhysicalRegion>& regions,
+                                  Context ctx, Runtime* runtime)
 {
   const SGDOptimizer* op = (SGDOptimizer*) task->args;
   if (op->momentum > 0.0f) {
@@ -93,8 +93,9 @@ void SGDOptimizer::update_task(const Task* task,
       assert(false);
     }
   }
-  // Step 1: gather gradients in the first replica
-  cudaStream_t stream = hipGetTaskStream();
+
+  // Step 1: Gather gradients in the first replica
+  cudaSteam_t stream = hipGetTaskStream();
   for (int i = 1; i < num_replicas; i++) {
     const float* src = w_grad_ptr + i * size;
     apply_add_with_scale<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
@@ -107,6 +108,74 @@ void SGDOptimizer::update_task(const Task* task,
       size, op->lr, op->weight_decay, op->momentum, op->nesterov,
       w_grad_ptr, v_ptr, w_ptr);
   checkCUDA(cudaStreamSynchronize(stream));
+  checkCUDA(cudaDeviceSynchronize());
+}
+
+__host__
+void SGDOptimizer::nccl_update_task(
+    const Task* task,
+    const std::vector<PhysicalRegion>& regions,
+    Context ctx, Runtime* runtime)
+{
+  const SGDOptimizer* op = (SGDOptimizer*) task->args;
+  FFHandler handler = *((FFHandler*) task->local_args);
+  if (op->momentum > 0.0f) {
+    assert(regions.size() == 3);
+    assert(task->regions.size() == 3);
+  } else {
+    assert(regions.size() == 2);
+    assert(task->regions.size() == 2);
+  }
+  Domain domain = runtime->get_index_space_domain(ctx,
+      task->regions[1].region.get_index_space());
+  const float *w_grad_ptr = NULL;
+  float *w_ptr = NULL, *v_ptr = NULL;
+  size_t size = 0;
+  switch(domain.get_dim()) {
+#define DIMFUNC(DIM) \
+    case DIM: \
+    { \
+      TensorAccessorR<float, DIM> accWGrad( \
+          regions[0], task->regions[0], FID_DATA, ctx, runtime); \
+      TensorAccessorW<float, DIM> accW( \
+          regions[1], task->regions[1], FID_DATA, ctx, runtime, \
+          true/*readOutput*/); \
+      assert(accW.rect == accWGrad.rect); \
+      size = accW.rect.volume(); \
+      w_grad_ptr = accWGrad.ptr; \
+      w_ptr = accW.ptr; \
+      if (op->momentum > 0.0f) { \
+        TensorAccessorW<float, DIM> accV( \
+            regions[2], task->regions[2], FID_DATA, ctx, runtime, \
+            true/*readOutput*/); \
+        assert(accW.rect == accV.rect); \
+        v_ptr = accV.ptr; \
+      } \
+      break; \
+    }
+    LEGION_FOREACH_N(DIMFUNC)
+#undef DIMFUNC
+    default:
+    {
+      // Unsupported dims
+      assert(false);
+    }
+  }
+
+  // Use NCCL to sync gradients
+#ifndef DISABLE_LEGION_CUDA_HIJACK
+  cudaStream_t stream;
+  checkCUDA(cudaStreamCreate(&stream));
+  checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
+      ncclSum, handler.nccl, stream));
+#elif
+  checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
+      ncclSum, handler.nccl));
+#endif
+  // Step 2: SGD update
+  sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
+      size, op->lr, op->weight_decay, op->momentum, op->nesterov,
+      w_grad_ptr, v_ptr, w_ptr);
   checkCUDA(cudaDeviceSynchronize());
 }
 
@@ -157,9 +226,9 @@ void adam_update(int count, float alpha_t,
 }
 
 __host__
-void AdamOptimizer::update_task(const Task* task,
-                                const std::vector<PhysicalRegion>& regions,
-                                Context ctx, Runtime* runtime)
+void AdamOptimizer::ps_update_task(const Task* task,
+                                   const std::vector<PhysicalRegion>& regions,
+                                   Context ctx, Runtime* runtime)
 {
   assert(regions.size() == 4);
   assert(task->regions.size() == 4);
@@ -170,57 +239,39 @@ void AdamOptimizer::update_task(const Task* task,
   float *w_ptr = NULL, *v_ptr = NULL, *m_ptr = NULL;
   size_t size = 0, num_replicas = 0;
   switch(domain.get_dim()) {
-    case 1:
-    {
-      TensorAccessorR<float, 1> accWGrad(
-          regions[0], task->regions[0], FID_DATA, ctx, runtime);
-      TensorAccessorW<float, 1> accW(
-          regions[1], task->regions[1], FID_DATA, ctx, runtime,
-          true/*readOutput*/);
-      TensorAccessorW<float, 1> accV(
-          regions[2], task->regions[2], FID_DATA, ctx, runtime,
-          true/*readOutput*/);
-      TensorAccessorW<float, 1> accM(
-          regions[3], task->regions[3], FID_DATA, ctx, runtime,
-          true/*readOutput*/);
-      size = accW.rect.volume();
-      assert(accWGrad.rect.volume() % accW.rect.volume() == 0);
-      num_replicas = accWGrad.rect.volume() / accW.rect.volume();
-      w_grad_ptr = accWGrad.ptr;
-      w_ptr = accW.ptr;
-      v_ptr = accV.ptr;
-      m_ptr = accM.ptr;
-      break;
+#define DIMFUNC(DIM) \
+    case DIM: \
+    { \
+      TensorAccessorR<float, DIM> accWGrad( \
+          regions[0], task->regions[0], FID_DATA, ctx, runtime); \
+      TensorAccessorW<float, DIM> accW( \
+          regions[1], task->regions[1], FID_DATA, ctx, runtime, \
+          true/*readOutput*/); \
+      TensorAccessorW<float, DIM> accV( \
+          regions[2], task->regions[2], FID_DATA, ctx, runtime, \
+          true/*readOutput*/); \
+      TensorAccessorW<float, DIM> accM( \
+          regions[3], task->regions[3], FID_DATA, ctx, runtime, \
+          true/*readOutput*/); \
+      size = accW.rect.volume(); \
+      assert(accWGrad.rect.volume() % accW.rect.volume() == 0); \
+      num_replicas = accWGrad.rect.volume() / accW.rect.volume(); \
+      w_grad_ptr = accWGrad.ptr; \
+      w_ptr = accW.ptr; \
+      v_ptr = accV.ptr; \
+      m_ptr = accM.ptr; \
+      break; \
     }
-    case 2:
-    {
-      TensorAccessorR<float, 2> accWGrad(
-          regions[0], task->regions[0], FID_DATA, ctx, runtime);
-      TensorAccessorW<float, 2> accW(
-          regions[1], task->regions[1], FID_DATA, ctx, runtime,
-          true/*readOutput*/);
-      TensorAccessorW<float, 2> accV(
-          regions[2], task->regions[2], FID_DATA, ctx, runtime,
-          true/*readOutput*/);
-      TensorAccessorW<float, 2> accM(
-          regions[3], task->regions[3], FID_DATA, ctx, runtime,
-          true/*readOutput*/);
-      size = accW.rect.volume();
-      assert(accWGrad.rect.volume() % accW.rect.volume() == 0);
-      num_replicas = accWGrad.rect.volume() / accW.rect.volume();
-      w_grad_ptr = accWGrad.ptr;
-      w_ptr = accW.ptr;
-      v_ptr = accV.ptr;
-      m_ptr = accM.ptr;
-      break;
-    }
+    LEGION_FOREACH_N(DIMFUNC)
+#undef DIMFUNC
     default:
     {
       // Unsupported dims
       assert(false);
     }
   }
-  // Step 1: gather gradients in the first replica
+
+  // Step 1: Gather gradients in the first replica
   for (int i = 1; i < num_replicas; i++) {
     const float* src = w_grad_ptr + i * size;
     add_kernel<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
@@ -231,6 +282,73 @@ void AdamOptimizer::update_task(const Task* task,
   //        op->alpha, op->alpha_t, op->weight_decay);
   // Step 2: Adam update
   adam_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, hipGetTaskStream()>>>(
+      size, op->alpha_t, op->beta1, op->beta2,
+      op->weight_decay, op->epsilon,
+      w_grad_ptr, m_ptr, v_ptr, w_ptr);
+  checkCUDA(cudaDeviceSynchronize());
+}
+
+__host__
+void AdamOptimizer::nccl_update_task(const Task* task,
+                                     const std::vector<PhysicalRegion>& regions,
+                                     Context ctx, Runtime* runtime)
+{
+  assert(regions.size() == 4);
+  assert(task->regions.size() == 4);
+  const AdamOptimizer* op = (AdamOptimizer*) task->args;
+  FFHandler handler = *((FFHandler*) task->local_args);
+  Domain domain = runtime->get_index_space_domain(ctx,
+      task->regions[1].region.get_index_space());
+  const float *w_grad_ptr = NULL;
+  float *w_ptr = NULL, *v_ptr = NULL, *m_ptr = NULL;
+  size_t size = 0;
+  switch(domain.get_dim()) {
+#define DIMFUNC(DIM) \
+    case DIM: \
+    { \
+      TensorAccessorR<float, DIM> accWGrad( \
+          regions[0], task->regions[0], FID_DATA, ctx, runtime); \
+      TensorAccessorW<float, DIM> accW( \
+          regions[1], task->regions[1], FID_DATA, ctx, runtime, \
+          true/*readOutput*/); \
+      TensorAccessorW<float, DIM> accV( \
+          regions[2], task->regions[2], FID_DATA, ctx, runtime, \
+          true/*readOutput*/); \
+      TensorAccessorW<float, DIM> accM( \
+          regions[3], task->regions[3], FID_DATA, ctx, runtime, \
+          true/*readOutput*/); \
+      size = accW.rect.volume(); \
+      assert(accWGrad.rect == accW.rect); \
+      assert(accWGrad.rect == accV.rect); \
+      assert(accWGrad.rect == accM.rect); \
+      w_grad_ptr = accWGrad.ptr; \
+      w_ptr = accW.ptr; \
+      v_ptr = accV.ptr; \
+      m_ptr = accM.ptr; \
+      break; \
+    }
+    LEGION_FOREACH_N(DIMFUNC)
+#undef DIMFUNC
+    default:
+    {
+      // Unsupported dims
+      assert(false);
+    }
+  }
+  // Use NCCL to sync gradients
+#ifndef DISABLE_LEGION_CUDA_HIJACK
+  cudaStream_t stream;
+  checkCUDA(cudaStreamCreate(&stream));
+  checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
+      ncclSum, handler.nccl, stream));
+#elif
+  checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
+      ncclSum, handler.nccl));
+#endif
+  //fprintf(stderr, "alpha = %.8lf alpha_t = %.8lf decay = %.8lf\n",
+  //        op->alpha, op->alpha_t, op->weight_decay);
+  // Step 2: Adam update
+  adam_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS>>>(
       size, op->alpha_t, op->beta1, op->beta2,
       op->weight_decay, op->epsilon,
       w_grad_ptr, m_ptr, v_ptr, w_ptr);

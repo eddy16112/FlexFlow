@@ -19,6 +19,7 @@
 #include "legion.h"
 #include <cudnn.h>
 #include <cublas_v2.h>
+#include <nccl.h>
 
 // ========================================================
 // Define Runtime Constants
@@ -44,6 +45,7 @@ struct ParallelConfig {
     CPU = 1,
   };
   int num_parts() const;
+  bool is_data_parallel() const;
   DeviceType device_type;
   int nDims, dim[MAX_TENSOR_DIM];
   int device_ids[MAX_NUM_WORKERS];
@@ -52,8 +54,15 @@ struct ParallelConfig {
 struct FFHandler {
   cudnnHandle_t dnn;
   cublasHandle_t blas;
+  ncclComm_t nccl;
   void *workSpace;
   size_t workSpaceSize;
+};
+
+struct FFInitInfo {
+  ncclUniqueId ncclId;
+  size_t workSpaceSize;
+  int myRank, allRanks;
 };
 
 bool load_strategies_from_file(const std::string& filename,
@@ -66,11 +75,16 @@ class FFConfig {
 public:
   enum PreservedIDs{
     InvalidID = 0,
-    DataParallelism_1D = 1,
-    DataParallelism_2D = 2,
-    DataParallelism_3D = 3,
-    DataParallelism_4D = 4,
-    DataParallelism_5D = 5,
+    DataParallelism_GPU_1D = 1,
+    DataParallelism_GPU_2D = 2,
+    DataParallelism_GPU_3D = 3,
+    DataParallelism_GPU_4D = 4,
+    DataParallelism_GPU_5D = 5,
+    DataParallelism_CPU_1D = 11,
+    DataParallelism_CPU_2D = 12,
+    DataParallelism_CPU_3D = 13,
+    DataParallelism_CPU_4D = 14,
+    DataParallelism_CPU_5D = 15,
   };
 
   FFConfig();
@@ -84,7 +98,7 @@ public:
 public:
   int epochs, batchSize, iterations, printFreq;
   //int inputHeight, inputWidth;
-  int numNodes, loadersPerNode, workersPerNode;
+  int numNodes, cpusPerNode, workersPerNode;
   float learningRate, weightDecay;
   size_t workSpaceSize;
   Context lg_ctx;

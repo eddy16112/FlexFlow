@@ -40,7 +40,7 @@ PROTOBUF_INC ?= ${FF_HOME}/protobuf/src
 endif
 
 # Flags for directing the runtime makefile what to include
-DEBUG           ?= 0		# Include debugging symbols
+DEBUG           ?= 1		# Include debugging symbols
 MAX_DIM         ?= 4		# Maximum number of dimensions
 OUTPUT_LEVEL    ?= LEVEL_DEBUG	# Compile time logging level
 USE_CUDA        ?= 0		# Include CUDA support (requires CUDA)
@@ -109,12 +109,12 @@ GEN_SRC		?= main.cc flexflow_c.cc flexflow_dataloader.cc strategy.pb.cc $(FF_SRC
 GEN_HIP_SRC	?= $(FF_GPU_SRC) # .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
-INC_FLAGS	?= -I$(FF_HOME)/include -I$(PROTOBUF_INC) -I$(CUDNN_HOME)/include -I$(CUDA_HOME)/include
+INC_FLAGS	?= -I$(FF_HOME)/include -I$(PROTOBUF_INC) -I$(CUDNN_HOME)/include -I$(CUDA_HOME)/include -I$(NCCL_HOME)/include
 CC_FLAGS	?= -DBINDINGS_AUGMENT_PYTHONPATH -DFF_USE_PYTHON -DMAX_TENSOR_DIM=$(MAX_DIM) -std=c++11
 NVCC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM) -std=c++11
 HIPCC_FLAGS     ?= -DMAX_TENSOR_DIM=$(MAX_DIM) -std=c++11
 GASNET_FLAGS	?=
-LD_FLAGS	?= -lprotobuf -lcudnn -lcublas -lcurand -L$(PROTOBUF_LIB) -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64
+LD_FLAGS	?= -lprotobuf -lcudnn -lcublas -lcurand -lnccl -L$(PROTOBUF_LIB) -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64 -L$(NCCL_HOME)/lib
 
 ifeq ($(strip $(FF_ENABLE_DEBUG)), 1)
 CC_FLAGS += -DFF_DEBUG

@@ -50,10 +50,16 @@ GEN_HIP_SRC	+= ${FF_HOME}/src/ops/conv_2d.cu\
 
 INC_FLAGS	+= -I${FF_HOME}/include/ -I${CUDNN}/include
 
+<<<<<<< HEAD
 #LD_FLAGS        += -lcudnn -lcublas -lcurand -lprotobuf -L/usr/local/lib -L${CUDNN}/lib64 #-mavx2 -mfma -mf16c
 CC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM)
 NVCC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM)
 HIPCC_FLAGS     ?= -DMAX_TENSOR_DIM=$(MAX_DIM)
+=======
+LD_FLAGS        += -lcudnn -lcublas -lcurand -lprotobuf -lnccl -L/usr/local/lib -L${CUDNN}/lib64 #-mavx2 -mfma -mf16c
+CC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM) 
+NVCC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM) 
+>>>>>>> upstream/nccl
 GASNET_FLAGS	?=
 # For Point and Rect typedefs
 CC_FLAGS	+= -std=c++11 #-DMAX_RETURN_SIZE=16777216
