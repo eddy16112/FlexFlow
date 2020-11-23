@@ -15,6 +15,10 @@
 
 #ifndef _FLEXFLOW_MODEL_H_
 #define _FLEXFLOW_MODEL_H_
+#include "cuda_runtime.h"
+extern "C" {
+cudaStream_t hipGetTaskStream();
+}
 #include "legion.h"
 #include "config.h"
 #include "tensor.h"
@@ -146,11 +150,6 @@ enum ShardingID {
 enum FieldIDs {
   FID_DATA,
 };
-
-#include "cuda_runtime.h"
-extern "C" {
-cudaStream_t hipGetTaskStream();
-}
 
 
 class FFModel;

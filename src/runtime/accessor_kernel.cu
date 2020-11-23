@@ -1,3 +1,7 @@
+#include "cuda_runtime.h"
+extern "C" {
+cudaStream_t hipGetTaskStream();
+}
 #include "accessor.h"
 #include "model.h"
 #include "cuda_helper.h"

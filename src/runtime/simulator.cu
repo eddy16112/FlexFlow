@@ -13,6 +13,10 @@
  * limitations under the License.
  */
 
+#include "cuda_runtime.h"
+extern "C" {
+cudaStream_t hipGetTaskStream();
+}
 #include "simulator.h"
 #include "model.h"
 #include "realm/runtime_impl.h"

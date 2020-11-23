@@ -22,6 +22,7 @@ USE_GASNET      ?= 1		# Include GASNet support (requires GASNet)
 USE_HDF         ?= 1		# Include HDF5 support (requires HDF5)
 ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
 USE_HIP         ?= 2
+#USE_GPU_REDOP   ?= 1
 
 # Put the binary file name here
 OUTFILE		?= alexnet
