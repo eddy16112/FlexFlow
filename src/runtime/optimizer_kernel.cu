@@ -95,7 +95,7 @@ void SGDOptimizer::ps_update_task(const Task* task,
   }
 
   // Step 1: Gather gradients in the first replica
-  cudaSteam_t stream = hipGetTaskStream();
+  cudaStream_t stream = hipGetTaskStream();
   for (int i = 1; i < num_replicas; i++) {
     const float* src = w_grad_ptr + i * size;
     apply_add_with_scale<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(

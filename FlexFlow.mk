@@ -50,16 +50,10 @@ GEN_HIP_SRC	+= ${FF_HOME}/src/ops/conv_2d.cu\
 
 INC_FLAGS	+= -I${FF_HOME}/include/ -I${CUDNN}/include
 
-<<<<<<< HEAD
 #LD_FLAGS        += -lcudnn -lcublas -lcurand -lprotobuf -L/usr/local/lib -L${CUDNN}/lib64 #-mavx2 -mfma -mf16c
 CC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM)
 NVCC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM)
 HIPCC_FLAGS     ?= -DMAX_TENSOR_DIM=$(MAX_DIM)
-=======
-LD_FLAGS        += -lcudnn -lcublas -lcurand -lprotobuf -lnccl -L/usr/local/lib -L${CUDNN}/lib64 #-mavx2 -mfma -mf16c
-CC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM) 
-NVCC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM) 
->>>>>>> upstream/nccl
 GASNET_FLAGS	?=
 # For Point and Rect typedefs
 CC_FLAGS	+= -std=c++11 #-DMAX_RETURN_SIZE=16777216
@@ -86,9 +80,9 @@ ifndef PROTOBUF
 #$(error PROTOBUF variable is not defined, aborting build)
 endif
 
-INC_FLAGS	+= -I$(PROTOBUF_DIR)/include
+INC_FLAGS	+= -I$(MPI_HOME)/include -I$(PROTOBUF_DIR)/include -I$(NCCL_HOME)/inlcude
 #LD_FLAGS	+= -L${FF_HOME}/protobuf/src/.libs
-LD_FLAGS	+= -lprotobuf -lcudnn -lcublas -lcurand -L$(PROTOBUF_DIR)/lib -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64
+LD_FLAGS	+= -lprotobuf -lcudnn -lcublas -lcurand -L$(PROTOBUF_DIR)/lib -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64 -L$(NCCL_HOME)/lib -lnccl
 
 #ifndef HDF5
 #HDF5_inc	?= /usr/include/hdf5/serial
