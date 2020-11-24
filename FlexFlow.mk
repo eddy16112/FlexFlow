@@ -80,6 +80,7 @@ ifndef PROTOBUF
 #$(error PROTOBUF variable is not defined, aborting build)
 endif
 
+#INC_FLAGS       += -DDISABLE_LEGION_CUDA_HIJACK
 INC_FLAGS	+= -I$(MPI_HOME)/include -I$(PROTOBUF_DIR)/include -I$(NCCL_HOME)/inlcude
 #LD_FLAGS	+= -L${FF_HOME}/protobuf/src/.libs
 LD_FLAGS	+= -lprotobuf -lcudnn -lcublas -lcurand -L$(PROTOBUF_DIR)/lib -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64 -L$(NCCL_HOME)/lib -lnccl

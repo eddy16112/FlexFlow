@@ -48,6 +48,7 @@ USE_GASNET      ?= 1		# Include GASNet support (requires GASNet)
 USE_HDF         ?= 0		# Include HDF5 support (requires HDF5)
 ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
 USE_HIP         ?= 2
+#USE_HIP_HIJACK  ?= 0
 
 USE_PYTHON := 1
 ifndef PYTHON_LIB
@@ -116,6 +117,8 @@ HIPCC_FLAGS     ?= -DMAX_TENSOR_DIM=$(MAX_DIM) -std=c++11
 GASNET_FLAGS	?=
 LD_FLAGS	?= -lprotobuf -lcudnn -lcublas -lcurand -lnccl -L$(PROTOBUF_LIB) -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64 -L$(NCCL_HOME)/lib
 
+#INC_FLAGS       += -DDISABLE_LEGION_CUDA_HIJACK 
+  
 ifeq ($(strip $(FF_ENABLE_DEBUG)), 1)
 CC_FLAGS += -DFF_DEBUG
 NVCC_FLAGS += -DFF_DEBUG

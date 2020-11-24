@@ -1,6 +1,13 @@
 #include "cuda_helper.h"
 #include "model.h"
 
+#ifdef DISABLE_LEGION_CUDA_HIJACK
+cudaStream_t hipGetTaskStream()
+{
+  return 0;
+}
+#endif
+
 __global__
 void scale_kernel(float* ptr, coord_t size, float a, float b)
 {

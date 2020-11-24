@@ -168,9 +168,10 @@ void SGDOptimizer::nccl_update_task(
   //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
       ncclSum, handler.nccl, stream));
-#elif
+#else
+  cudaStream_t stream = hipGetTaskStream();
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
-      ncclSum, handler.nccl));
+      ncclSum, handler.nccl, 0));
 #endif
   // Step 2: SGD update
   sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
@@ -341,9 +342,10 @@ void AdamOptimizer::nccl_update_task(const Task* task,
   //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
       ncclSum, handler.nccl, stream));
-#elif
+#else
+  cudaStream_t stream = hipGetTaskStream();
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
-      ncclSum, handler.nccl));
+      ncclSum, handler.nccl, 0));
 #endif
   //fprintf(stderr, "alpha = %.8lf alpha_t = %.8lf decay = %.8lf\n",
   //        op->alpha, op->alpha_t, op->weight_decay);

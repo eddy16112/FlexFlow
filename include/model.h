@@ -152,7 +152,6 @@ extern "C" {
 cudaStream_t hipGetTaskStream();
 }
 
-
 class FFModel;
 class Op;
 class DataLoader;
