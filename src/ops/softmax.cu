@@ -245,7 +245,7 @@ void Softmax::backward_task(const Task *task,
 #ifndef DISABLE_LEGION_CUDA_HIJACK
   // cudaStream_t stream;
   // checkCUDA(cudaStreamCreate(&stream));
-  checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
+  // checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
   checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
 #endif
   checkCUDA(cudaMemcpyAsync(acc_input_grad.ptr, acc_output_grad.ptr,
