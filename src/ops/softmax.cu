@@ -247,7 +247,6 @@ void Softmax::backward_task(const Task *task,
   // checkCUDA(cudaStreamCreate(&stream));
   // checkCUDA(cublasSetStream(m->handle.blas, hipGetTaskStream()));
   checkCUDNN(cudnnSetStream(m->handle.dnn, hipGetTaskStream()));
->>>>>>> upstream/nccl
 #endif
   checkCUDA(cudaMemcpyAsync(acc_input_grad.ptr, acc_output_grad.ptr,
                             acc_input_grad.rect.volume() * sizeof(float),
