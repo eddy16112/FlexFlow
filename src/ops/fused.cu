@@ -258,7 +258,7 @@ void FusedOp::forward_task(const Task* task,
     assert(metas->meta[0]->handle.dnn == metas->meta[op]->handle.dnn);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream = hipGetStream();
+  cudaStream_t stream = hipGetTaskStream();
   //checkCUDA(cudaStreamCreate(&stream));
   checkCUDA(cublasSetStream(metas->meta[0]->handle.blas, stream));
   checkCUDNN(cudnnSetStream(metas->meta[0]->handle.dnn, stream));
@@ -494,7 +494,7 @@ void FusedOp::backward_task(const Task* task,
     assert(metas->meta[0]->handle.dnn == metas->meta[op]->handle.dnn);
   }
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream = hipGetStream();
+  cudaStream_t stream = hipGetTaskStream();
   //checkCUDA(cudaStreamCreate(&stream));
   checkCUDA(cublasSetStream(metas->meta[0]->handle.blas, stream));
   checkCUDNN(cudnnSetStream(metas->meta[0]->handle.dnn, stream));
