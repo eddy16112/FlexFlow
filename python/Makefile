@@ -94,7 +94,7 @@ FF_GPU_SRC ?= 	$(FF_HOME)/src/ops/conv_2d.cu $(FF_HOME)/src/runtime/model.cu\
 		$(FF_HOME)/src/ops/pool_2d.cu $(FF_HOME)/src/ops/batch_norm.cu\
 		$(FF_HOME)/src/ops/linear.cu  $(FF_HOME)/src/ops/dropout.cu\
 		$(FF_HOME)/src/ops/softmax.cu $(FF_HOME)/src/ops/concat.cu\
-		$(FF_HOME)/src/ops/flat.cu $(FF_HOME)/src/ops/embedding.cu\
+		$(FF_HOME)/src/ops/flat.cu $(FF_HOME)/src/ops/fused.cu $(FF_HOME)/src/ops/embedding.cu\
 		$(FF_HOME)/src/ops/element_binary.cu $(FF_HOME)/src/ops/element_unary.cu\
     		${FF_HOME}/src/ops/batch_matmul.cu\
 		${FF_HOME}/src/ops/split.cu\

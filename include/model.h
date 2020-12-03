@@ -706,6 +706,14 @@ public:
   static void backward_task(const Task *task,
                             const std::vector<PhysicalRegion> &regions,
                             Context ctx, Runtime *runtime);
+  static void forward_kernel(const Pool2DMeta* m,
+                             const float* input_ptr,
+                             float* output_ptr);
+  static void backward_kernel(const Pool2DMeta* m,
+                              const float* input_ptr,
+                              float* input_grad_ptr,
+                              const float* output_ptr,
+                              const float* output_grad_ptr);
   bool measure_compute_time(Simulator* sim,
                             const ParallelConfig& pc,
                             float& forward_time,
@@ -1013,6 +1021,12 @@ public:
   static void backward_task(const Task *task,
                             const std::vector<PhysicalRegion> &regions,
                             Context ctx, Runtime *runtime);
+  static void forward_kernel(const float* input_ptr,
+                             float* output_ptr,
+                             size_t num_elements);
+  static void backward_kernel(float* input_grad_ptr,
+                              const float* output_grad_ptr,
+                              size_t num_elements);
   bool measure_compute_time(Simulator* sim,
                             const ParallelConfig& pc,
                             float& forward_time,
@@ -1069,6 +1083,13 @@ public:
 #endif
 };
 
+class TransposeMeta : public OpMeta {
+public:
+  TransposeMeta(FFHandler handler) : OpMeta(handler) {};
+  int num_dim;
+  int perm[MAX_TENSOR_DIM];
+};
+
 class Transpose : public Op {
 public:
   Transpose(FFModel& model,
@@ -1091,6 +1112,16 @@ public:
   static void backward_task(const Task *task,
                             const std::vector<PhysicalRegion> &regions,
                             Context ctx, Runtime *runtime);
+  static void forward_kernel(const TransposeMeta* m,
+                             const float* input_ptr,
+                             float* output_ptr,
+                             Domain in_domain,
+                             Domain out_domain);
+  static void backward_kernel(const TransposeMeta* m,
+                              float* input_grad_ptr,
+                              const float* output_grad_ptr,
+                              Domain in_grad_domain,
+                              Domain out_grad_domain);
   bool measure_compute_time(Simulator* sim,
                             const ParallelConfig& pc,
                             float& forward_time,
@@ -1157,6 +1188,12 @@ public:
   static void backward_task(const Task *task,
                             const std::vector<PhysicalRegion> &regions,
                             Context ctx, Runtime *runtime);
+  static void forward_kernel(const float* input_ptr,
+                             float* output_ptr,
+                             size_t num_elements);
+  static void backward_kernel(float* input_grad_ptr,
+                              const float* output_grad_ptr,
+                              size_t num_elements);
   bool measure_compute_time(Simulator* sim,
                             const ParallelConfig& pc,
                             float& forward_time,
@@ -1169,6 +1206,7 @@ private:
 class ConcatMeta : public OpMeta {
 public:
   ConcatMeta(FFHandler handle) : OpMeta(handle) {};
+  int axis;
 };
 
 class Concat : public Op {
@@ -1195,6 +1233,18 @@ public:
   static void backward_task(const Task *task,
                             const std::vector<PhysicalRegion> &regions,
                             Context ctx, Runtime *runtime);
+  static void forward_kernel(float* output,
+                             const float** inputs,
+                             int num_inputs,
+                             int axis,
+                             const Domain& out_domain,
+                             const Domain* in_domain);
+  static void backward_kernel(const float* output_grad,
+                              float** input_grads,
+                              int num_inputs,
+                              int axis,
+                              const Domain& out_grad_domain,
+                              const Domain* in_grad_domain);
   bool measure_compute_time(Simulator* sim,
                             const ParallelConfig& pc,
                             float& forward_time,
