@@ -786,8 +786,14 @@ class FFModel(object):
     c_metrics = ffi.new("int[]", metrics_int)
     ffc.flexflow_model_compile(self.handle, c_loss_type, c_metrics, len(metrics))
     
-  def train(self, dataloaders, epochs=1, batch_size=64):
-    num_samples = dataloaders[0].get_num_samples()
+  def fit(self, x=None, y=None, batch_size=None, epochs=1):
+    if (isinstance(x, list) == False):
+      dataloaders = [x]
+    else:
+      dataloaders = x
+    dataloaders.append(y)
+          
+    num_samples = y.get_num_samples()
     batch_size = self._ffconfig.get_batch_size()
     for epoch in range(0,epochs):
       for d in dataloaders:
@@ -806,8 +812,14 @@ class FFModel(object):
         if (epoch > 0):
           self._ffconfig.end_trace(self._tracing_id)
           
-  def eval(self, dataloaders):
-    num_samples = dataloaders[0].get_num_samples()
+  def eval(self, x=None, y=None, batch_size=None):
+    if (isinstance(x, list) == False):
+      dataloaders = [x]
+    else:
+      dataloaders = x
+    dataloaders.append(y)
+    
+    num_samples = y.get_num_samples()
     batch_size = self._ffconfig.get_batch_size()
     for d in dataloaders:
       d.reset()
@@ -818,7 +830,7 @@ class FFModel(object):
         d.next_batch(self)
       self.forward()
       self.compute_metrics()
-
+      
   def zero_gradients(self):
     ffc.flexflow_model_zero_gradients(self.handle)
 
@@ -853,6 +865,30 @@ class FFModel(object):
   def get_perf_metrics(self):
     handle = ffc.flexflow_model_get_perf_metrics(self.handle)
     return PerfMetrics(handle)
+    
+  def create_data_loader(self, batch_tensor, full_array):
+    full_array_shape = full_array.shape
+    num_samples = full_array_shape[0]
+    num_dim = len(full_array_shape)
+    if (full_array.dtype == "float32"):
+      datatype = DataType.DT_FLOAT
+    elif (full_array.dtype == "int32"):
+      datatype = DataType.DT_INT32
+    else:
+      assert 0, "unsupported datatype"
+
+    if (num_dim == 2):
+      full_tensor = self.create_tensor([num_samples, full_array_shape[1]], datatype)
+    elif (num_dim == 4):
+      full_tensor = self.create_tensor([num_samples, full_array_shape[1], full_array_shape[2], full_array_shape[3]], datatype)
+    else:
+      assert 0, "unsupported dims"
+
+    full_tensor.attach_numpy_array(self._ffconfig, full_array)
+    dataloader = SingleDataLoader(self, batch_tensor, full_tensor, num_samples, datatype)
+    full_tensor.detach_numpy_array(self._ffconfig)
+
+    return dataloader
 
   def __get_initializer_handle(self, initializer):
     if (initializer == None):
@@ -977,6 +1013,42 @@ class NetConfig(object):
     self._handle = ffi.gc(self.handle, ffc.flexflow_net_config_destroy)
     cpath = ffc.flexflow_net_config_get_dataset_path(self.handle)
     self.dataset_path = ffi.string(cpath)
+    
+# -----------------------------------------------------------------------
+# DLRMConfig
+# -----------------------------------------------------------------------
+
+class DLRMConfig(object):
+  def __init__(self):
+    self.handle = ffc.flexflow_dlrm_config_create()
+    self._handle = ffi.gc(self.handle, ffc.flexflow_dlrm_config_destroy)
+    
+    cstr = ffc.flexflow_dlrm_config_get_dataset_path(self.handle)
+    self.dataset_path = ffi.string(cstr)
+    
+    cstr = ffc.flexflow_dlrm_config_get_arch_interaction_op(self.handle)
+    self.arch_interaction_op = ffi.string(cstr)
+    
+    self.sparse_feature_size = ffc.flexflow_dlrm_config_get_sparse_feature_size(self.handle)
+    self.sigmoid_bot = ffc.flexflow_dlrm_config_get_sigmoid_bot(self.handle)
+    self.sigmoid_top = ffc.flexflow_dlrm_config_get_sigmoid_top(self.handle)
+    self.embedding_bag_size = ffc.flexflow_dlrm_config_get_embedding_bag_size(self.handle)
+    self.loss_threshold = ffc.flexflow_dlrm_config_get_loss_threshold(self.handle)
+    
+    mlp_bot_c = ffc.flexflow_dlrm_config_get_mlp_bot(self.handle)
+    self.mlp_bot = []
+    for i in range(0, mlp_bot_c[0]):
+      self.mlp_bot.append(mlp_bot_c[i+1])
+      
+    mlp_top_c = ffc.flexflow_dlrm_config_get_mlp_top(self.handle)
+    self.mlp_top = []
+    for i in range(0, mlp_top_c[0]):
+      self.mlp_top.append(mlp_top_c[i+1])
+      
+    embedding_size_c = ffc.flexflow_dlrm_config_get_embedding_size(self.handle)
+    self.embedding_size = []
+    for i in range(0, embedding_size_c[0]):
+      self.embedding_size.append(embedding_size_c[i+1])
 
 # -----------------------------------------------------------------------
 # DataLoader
