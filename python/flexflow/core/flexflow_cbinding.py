@@ -31,6 +31,8 @@ ffi = cffi.FFI()
 ffi.cdef(_flexflow_cheader)
 ffc = ffi.dlopen(None)
 
+ff_tracing_id = 200
+
 def get_datatype_size(datatype):
   if (datatype == DataType.DT_FLOAT):
     return 4
@@ -395,13 +397,13 @@ class Tensor(object):
     self.mapped = False
     self.__get_dims()
     self.__get_data_type()
-    self.__get_owner_op(owner_op_type)
     if (deallocate == True):
       self._handle = ffi.gc(self.handle, ffc.flexflow_tensor_destroy)
     if (self.is_mapped() == True):
       self.mapped = True
 
     if owner_op_type != None:
+      self.__get_owner_op(owner_op_type)
       assert self.owner_op != None
 
   def inline_map(self, ffconfig):
@@ -560,12 +562,16 @@ class Parameter(Tensor):
 # -----------------------------------------------------------------------
 
 class FFModel(object):
-  __slots__ = ['handle', '_handle', '_layers', '_nb_layers']
+  __slots__ = ['handle', '_handle', '_layers', '_nb_layers', '_ffconfig', '_tracing_id']
   def __init__(self, ffconfig):
     self.handle = ffc.flexflow_model_create(ffconfig.handle)
     self._handle = ffi.gc(self.handle, ffc.flexflow_model_destroy)
     self._layers = dict()
     self._nb_layers = 0
+    self._ffconfig = ffconfig
+    global ff_tracing_id
+    self._tracing_id = ff_tracing_id
+    ff_tracing_id += 1
 
   def get_layers(self):
     return self._layers
@@ -662,7 +668,7 @@ class FFModel(object):
     assert type(tensors) is list, "tensors should be a list"
     tensor_handle_list = []
     n = len(tensors)
-    assert n <= 32, "Please increase MAX_NUM_INPUTS"
+    assert n <= 256, "Please increase MAX_NUM_INPUTS"
     for tensor in tensors:
       tensor_handle_list.append(tensor.handle)
     c_tensor_handle_list = ffi.new("flexflow_tensor_t[]", tensor_handle_list)
@@ -677,9 +683,9 @@ class FFModel(object):
       assert input.dims[axis] % sizes == 0, "Split dimension is not divisible"
       split = [input.dims[axis] // sizes for i in range(sizes)]
     n = len(split)
-    assert n <= 32, "Please increase MAX_NUM_OUTPUTS"
+    assert n <= 256, "Please increase MAX_NUM_OUTPUTS"
     c_split = ffi.new("int[]", split)
-    c_outputs_handle_list = ffi.new("flexflow_tensor_t[32]")
+    c_outputs_handle_list = ffi.new("flexflow_tensor_t[256]")
     ffc.flexflow_model_add_split(self.handle, input.handle, n, c_outputs_handle_list, c_split, axis)
     output_tensor_list = []
     for i in range(n):
@@ -779,7 +785,52 @@ class FFModel(object):
       metrics_int.append(enum_to_int(MetricsType, metric))
     c_metrics = ffi.new("int[]", metrics_int)
     ffc.flexflow_model_compile(self.handle, c_loss_type, c_metrics, len(metrics))
-
+    
+  def fit(self, x=None, y=None, batch_size=None, epochs=1):
+    if (isinstance(x, list) == False):
+      dataloaders = [x]
+    else:
+      dataloaders = x
+    dataloaders.append(y)
+          
+    num_samples = y.get_num_samples()
+    batch_size = self._ffconfig.get_batch_size()
+    for epoch in range(0,epochs):
+      for d in dataloaders:
+        d.reset()
+      self.reset_metrics()
+      iterations = num_samples / batch_size
+      for iter in range(0, int(iterations)):
+        for d in dataloaders:
+          d.next_batch(self)
+        if (epoch > 0):
+          self._ffconfig.begin_trace(self._tracing_id)
+        self.forward()
+        self.zero_gradients()
+        self.backward()
+        self.update()
+        if (epoch > 0):
+          self._ffconfig.end_trace(self._tracing_id)
+          
+  def eval(self, x=None, y=None, batch_size=None):
+    if (isinstance(x, list) == False):
+      dataloaders = [x]
+    else:
+      dataloaders = x
+    dataloaders.append(y)
+    
+    num_samples = y.get_num_samples()
+    batch_size = self._ffconfig.get_batch_size()
+    for d in dataloaders:
+      d.reset()
+    self.reset_metrics()
+    iterations = num_samples / batch_size
+    for iter in range(0, int(iterations)):
+      for d in dataloaders:
+        d.next_batch(self)
+      self.forward()
+      self.compute_metrics()
+      
   def zero_gradients(self):
     ffc.flexflow_model_zero_gradients(self.handle)
 
@@ -814,132 +865,30 @@ class FFModel(object):
   def get_perf_metrics(self):
     handle = ffc.flexflow_model_get_perf_metrics(self.handle)
     return PerfMetrics(handle)
+    
+  def create_data_loader(self, batch_tensor, full_array):
+    full_array_shape = full_array.shape
+    num_samples = full_array_shape[0]
+    num_dim = len(full_array_shape)
+    if (full_array.dtype == "float32"):
+      datatype = DataType.DT_FLOAT
+    elif (full_array.dtype == "int32"):
+      datatype = DataType.DT_INT32
+    else:
+      assert 0, "unsupported datatype"
 
-  def construct_model_from_file(self, input_tensors, filename):
-    tensor_dict = {}
-    output_tensors = []
-    in_file = open(filename, "r")
-    lines = in_file.readlines()
-    input_idx = 0
-    for line in lines:
-      items = line.strip().split(",")
-      assert len(items) >= 3, "wrong format"
-      items = [i.strip() for i in items]
-      print(items)
+    if (num_dim == 2):
+      full_tensor = self.create_tensor([num_samples, full_array_shape[1]], datatype)
+    elif (num_dim == 4):
+      full_tensor = self.create_tensor([num_samples, full_array_shape[1], full_array_shape[2], full_array_shape[3]], datatype)
+    else:
+      assert 0, "unsupported dims"
 
-      #get op name
-      op_name = items[0]
+    full_tensor.attach_numpy_array(self._ffconfig, full_array)
+    dataloader = SingleDataLoader(self, batch_tensor, full_tensor, num_samples, datatype)
+    full_tensor.detach_numpy_array(self._ffconfig)
 
-      #get previous ops
-      prev_ops_list = items[1].split(":")
-      prev_ops_list = [i.strip() for i in prev_ops_list]
-      for i in prev_ops_list:
-        if i == "":
-          prev_ops_list.remove(i)
-
-      #get op type
-      op_type = int_to_enum(OpType, int(items[2]))
-
-      if op_type == OpType.LINEAR:
-        assert len(items) == 6, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        if prev_ops_list[0] == "input":
-          input_tensor = input_tensors[input_idx]
-          input_idx += 1
-        else:
-          input_tensor = tensor_dict[prev_ops_list[0]]
-        od = int(items[3])
-        activ = int_to_enum(ActiMode, int(items[4]))
-        bias = bool(int(items[5]))
-        tensor_dict[op_name] = self.dense(input=input_tensor, out_dim=od, activation=activ, use_bias=bias, name=op_name)
-
-      elif op_type == OpType.CONV2D:
-        assert len(items) == 12, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        if prev_ops_list[0] == "input":
-          input_tensor = input_tensors[input_idx]
-          input_idx += 1
-        else:
-          input_tensor = tensor_dict[prev_ops_list[0]]
-        oc = int(items[3])
-        kh = int(items[4])
-        kw = int(items[5])
-        sh = int(items[6])
-        sw = int(items[7])
-        ph = int(items[8])
-        pw = int(items[9])
-        activ = int_to_enum(ActiMode, int(items[10]))
-        bias = bool(int(items[11]))
-        tensor_dict[op_name] = self.conv2d(input=input_tensor, out_channels=oc, kernel_h=kh, kernel_w=kw, stride_h=sh, stride_w=sw, padding_h=ph, padding_w=pw, activation=activ, use_bias=bias, name=op_name)
-
-      elif op_type == OpType.POOL2D:
-        assert len(items) == 8, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        input_tensor = tensor_dict[prev_ops_list[0]]
-        kh = int(items[3])
-        sh = int(items[4])
-        ph = int(items[5])
-        pt = int_to_enum(PoolType, int(items[6]))
-        activ = int_to_enum(ActiMode, int(items[7]))
-        tensor_dict[op_name] = self.pool2d(input=input_tensor, kernel_h=kh, kernel_w=kh, stride_h=sh, stride_w=sh, padding_h=ph, padding_w=ph, pool_type=pt, activation=activ, name=op_name)
-
-      elif op_type == OpType.DROPOUT:
-        assert len(items) == 4, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        input_tensor = tensor_dict[prev_ops_list[0]]
-        r = int(item[3])
-        tensor_dict[op_name] = self.dropout(input=input_tensor, rate=r, seed=0, name=op_name)
-
-      elif op_type == OpType.FLAT:
-        assert len(items) == 3, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        input_tensor = tensor_dict[prev_ops_list[0]]
-        tensor_dict[op_name] = self.flat(input=input_tensor, name=op_name)
-
-      elif op_type == OpType.RELU:
-        assert len(items) == 3, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        input_tensor = tensor_dict[prev_ops_list[0]]
-        tensor_dict[op_name] = self.relu(input=input_tensor, name=op_name)
-
-      elif op_type == OpType.SIGMOID:
-        assert len(items) == 3, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        input_tensor = tensor_dict[prev_ops_list[0]]
-        tensor_dict[op_name] = self.sigmoid(input=input_tensor, name=op_name)
-
-      elif op_type == OpType.TANH:
-        assert len(items) == 3, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        input_tensor = tensor_dict[prev_ops_list[0]]
-        tensor_dict[op_name] = self.tanh(input=input_tensor, name=op_name)
-
-      elif op_type == OpType.ELU:
-        assert len(items) == 3, "wrong format"
-        assert len(prev_ops_list) == 1, "wrong format"
-        input_tensor = tensor_dict[prev_ops_list[0]]
-        tensor_dict[op_name] = self.elu(input=input_tensor, name=op_name)
-
-      elif op_type == OpType.CONCAT:
-        assert len(items) == 4, "wrong format"
-        assert len(prev_ops_list) >= 2, "wrong format"
-        input_tensors = []
-        for i in prev_ops_list:
-          input_tensors.append(tensor_dict[i])
-        ax = int(items[3])
-        tensor_dict[op_name] = self.concat(tensors=input_tensors, axis=ax, name=op_name)
-
-      elif op_type == OpType.OUTPUT:
-        tensor_dict[op_name] = []
-        for i in prev_ops_list:
-          tensor_dict[op_name].append(tensor_dict[i])
-        output_tensors = tensor_dict[op_name]
-        #print(output_tensors[1].handle.impl)
-
-      else:
-        assert 0, "unknown op"
-
-    return output_tensors
+    return dataloader
 
   def __get_initializer_handle(self, initializer):
     if (initializer == None):
@@ -1064,6 +1013,42 @@ class NetConfig(object):
     self._handle = ffi.gc(self.handle, ffc.flexflow_net_config_destroy)
     cpath = ffc.flexflow_net_config_get_dataset_path(self.handle)
     self.dataset_path = ffi.string(cpath)
+    
+# -----------------------------------------------------------------------
+# DLRMConfig
+# -----------------------------------------------------------------------
+
+class DLRMConfig(object):
+  def __init__(self):
+    self.handle = ffc.flexflow_dlrm_config_create()
+    self._handle = ffi.gc(self.handle, ffc.flexflow_dlrm_config_destroy)
+    
+    cstr = ffc.flexflow_dlrm_config_get_dataset_path(self.handle)
+    self.dataset_path = ffi.string(cstr)
+    
+    cstr = ffc.flexflow_dlrm_config_get_arch_interaction_op(self.handle)
+    self.arch_interaction_op = ffi.string(cstr)
+    
+    self.sparse_feature_size = ffc.flexflow_dlrm_config_get_sparse_feature_size(self.handle)
+    self.sigmoid_bot = ffc.flexflow_dlrm_config_get_sigmoid_bot(self.handle)
+    self.sigmoid_top = ffc.flexflow_dlrm_config_get_sigmoid_top(self.handle)
+    self.embedding_bag_size = ffc.flexflow_dlrm_config_get_embedding_bag_size(self.handle)
+    self.loss_threshold = ffc.flexflow_dlrm_config_get_loss_threshold(self.handle)
+    
+    mlp_bot_c = ffc.flexflow_dlrm_config_get_mlp_bot(self.handle)
+    self.mlp_bot = []
+    for i in range(0, mlp_bot_c[0]):
+      self.mlp_bot.append(mlp_bot_c[i+1])
+      
+    mlp_top_c = ffc.flexflow_dlrm_config_get_mlp_top(self.handle)
+    self.mlp_top = []
+    for i in range(0, mlp_top_c[0]):
+      self.mlp_top.append(mlp_top_c[i+1])
+      
+    embedding_size_c = ffc.flexflow_dlrm_config_get_embedding_size(self.handle)
+    self.embedding_size = []
+    for i in range(0, embedding_size_c[0]):
+      self.embedding_size.append(embedding_size_c[i+1])
 
 # -----------------------------------------------------------------------
 # DataLoader
