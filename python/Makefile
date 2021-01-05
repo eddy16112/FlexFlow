@@ -43,10 +43,12 @@ endif
 DEBUG           ?= 0		# Include debugging symbols
 MAX_DIM         ?= 4		# Maximum number of dimensions
 OUTPUT_LEVEL    ?= LEVEL_DEBUG	# Compile time logging level
-USE_CUDA        ?= 1		# Include CUDA support (requires CUDA)
+USE_CUDA        ?= 0		# Include CUDA support (requires CUDA)
 USE_GASNET      ?= 1		# Include GASNet support (requires GASNet)
 USE_HDF         ?= 0		# Include HDF5 support (requires HDF5)
 ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
+USE_HIP         ?= 2
+#USE_HIP_HIJACK  ?= 0
 
 USE_PYTHON := 1
 ifndef PYTHON_LIB
@@ -99,21 +101,24 @@ FF_GPU_SRC ?= 	$(FF_HOME)/src/ops/conv_2d.cu $(FF_HOME)/src/runtime/model.cu\
 		${FF_HOME}/src/ops/transpose.cu\
 		${FF_HOME}/src/ops/reverse.cu\
 		${FF_HOME}/src/ops/reshape.cu\
-		$(FF_HOME)/src/loss_functions/loss_functions.cu\
+                $(FF_HOME)/src/loss_functions/loss_functions.cu\
 		$(FF_HOME)/src/metrics_functions/metrics_functions.cu\
 		$(FF_HOME)/src/runtime/initializer_kernel.cu $(FF_HOME)/src/runtime/optimizer_kernel.cu\
 		$(FF_HOME)/src/runtime/accessor_kernel.cu $(FF_HOME)/src/runtime/simulator.cu\
 		$(FF_HOME)/src/runtime/cuda_helper.cu flexflow_dataloader.cu
 GEN_SRC		?= main.cc flexflow_c.cc flexflow_dataloader.cc strategy.pb.cc $(FF_SRC) # .cc files
-GEN_GPU_SRC	?= $(FF_GPU_SRC) # .cu files
+GEN_HIP_SRC	?= $(FF_GPU_SRC) # .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
-INC_FLAGS	?= -I$(FF_HOME)/include -I$(PROTOBUF_INC) -I$(CUDNN_HOME)/include -I$(CUDA_HOME)/include
+INC_FLAGS	?= -I$(MPI_HOME)/include -I$(FF_HOME)/include -I$(PROTOBUF_INC) -I$(CUDNN_HOME)/include -I$(CUDA_HOME)/include -I$(NCCL_HOME)/include
 CC_FLAGS	?= -DBINDINGS_AUGMENT_PYTHONPATH -DFF_USE_PYTHON -DMAX_TENSOR_DIM=$(MAX_DIM) -std=c++11
 NVCC_FLAGS	?= -DMAX_TENSOR_DIM=$(MAX_DIM) -std=c++11
+HIPCC_FLAGS     ?= -DMAX_TENSOR_DIM=$(MAX_DIM) -std=c++11
 GASNET_FLAGS	?=
-LD_FLAGS	?= -lprotobuf -lcudnn -lcublas -lcurand -lnccl -L$(PROTOBUF_LIB) -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64 -L$(CUDA_HOME)/lib
+LD_FLAGS	?= -lprotobuf -lcudnn -lcublas -lcurand -lnccl -L$(PROTOBUF_LIB) -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64 -L$(NCCL_HOME)/lib
 
+#INC_FLAGS       += -DDISABLE_LEGION_CUDA_HIJACK 
+  
 ifeq ($(strip $(FF_ENABLE_DEBUG)), 1)
 CC_FLAGS += -DFF_DEBUG
 NVCC_FLAGS += -DFF_DEBUG
