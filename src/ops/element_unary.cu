@@ -315,6 +315,7 @@ void ElementUnary::forward_kernel(const ElementUnaryMeta* m,
         &alpha, m->inputTensor, input_ptr,
         &beta, m->outputTensor, output_ptr));
   } else {
+    cudaStream_t stream = get_stream();
     elewise_unary_forward_kernel<<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS, 0, stream>>>(
         num_elements, alpha, beta, m->op_type, input_ptr, output_ptr);
   } 
@@ -429,6 +430,7 @@ void ElementUnary::backward_kernel(const ElementUnaryMeta* m,
         &alpha, m->outputTensor, output_ptr, m->outputTensor, output_grad_ptr,
         m->inputTensor, input_ptr, &alpha, m->inputTensor, input_grad_ptr));
   } else {
+    cudaStream_t stream = get_stream();
     elewise_unary_backward_kernel<<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS, 0, stream>>>(
         num_elements, alpha, alpha, m->op_type, output_grad_ptr, input_ptr, input_grad_ptr);
   }

@@ -154,6 +154,8 @@ enum FieldIDs {
   FID_DATA,
 };
 
+cudaStream_t get_stream();
+
 class FFModel;
 class Op;
 class DataLoader;

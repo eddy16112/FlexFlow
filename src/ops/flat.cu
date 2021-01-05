@@ -203,6 +203,7 @@ void Flat::backward_kernel(float* input_grad_ptr,
                            size_t num_elements)
 {
   float alpha = 1.0f;
+  cudaStream_t stream = get_stream();
   apply_add_with_scale<<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS, 0, stream>>>(
       input_grad_ptr, output_grad_ptr, num_elements, alpha);
 }
