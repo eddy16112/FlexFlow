@@ -100,6 +100,7 @@ void Loss::backward_task_with_dim(const Task *task,
   assert(regions.size() == 3);
   assert(task->regions.size() == 3);
   const Loss* loss = (Loss*) task->args;
+  cudaStream_t stream = get_stream();
   if (loss->loss_type == LOSS_SPARSE_CATEGORICAL_CROSSENTROPY) {
     //sparse_categorical_crossentropy has label of dim: (batch_size, 1)
     TensorAccessorW<float, NDIM> acc_logit_grad(
@@ -120,10 +121,10 @@ void Loss::backward_task_with_dim(const Task *task,
     checkCUDA(cudaMemcpy(acc_logit_grad.ptr, acc_logit.ptr,
                          acc_logit.rect.volume() * sizeof(float),
                          cudaMemcpyDeviceToDevice));
-    sparse_categorical_crossentropy_loss_backward<<<GET_BLOCKS(num_samples), CUDA_NUM_THREADS>>>(
+    sparse_categorical_crossentropy_loss_backward<<<GET_BLOCKS(num_samples), CUDA_NUM_THREADS, 0, stream>>>(
         acc_logit_grad.ptr, acc_label.ptr, num_samples, num_classes);
     // Scale logit gradients by op->scale_factor
-    scale_kernel<<<GET_BLOCKS(acc_logit_grad.rect.volume()), CUDA_NUM_THREADS>>>(
+    scale_kernel<<<GET_BLOCKS(acc_logit_grad.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
         acc_logit_grad.ptr, acc_logit_grad.rect.volume(), 0, loss->scale_factor);
   } else {
     TensorAccessorW<float, NDIM> acc_logit_grad(
@@ -139,18 +140,18 @@ void Loss::backward_task_with_dim(const Task *task,
     int num_samples = acc_logit.rect.hi[NDIM-1] - acc_logit.rect.lo[NDIM-1] + 1;
     int num_channels = acc_logit.rect.volume() / num_samples;
     if (loss->loss_type == LOSS_CATEGORICAL_CROSSENTROPY) {
-      categorical_crossentropy_loss_backward<<<GET_BLOCKS(acc_logit.rect.volume()), CUDA_NUM_THREADS>>>(
+      categorical_crossentropy_loss_backward<<<GET_BLOCKS(acc_logit.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
           acc_logit_grad.ptr, acc_logit.ptr, acc_label.ptr,
           acc_logit.rect.volume());
       // Scale logit gradients by loss->scale_factor
-      scale_kernel<<<GET_BLOCKS(acc_logit_grad.rect.volume()), CUDA_NUM_THREADS>>>(
+      scale_kernel<<<GET_BLOCKS(acc_logit_grad.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
           acc_logit_grad.ptr, acc_logit_grad.rect.volume(), 0, loss->scale_factor);
     } else if (loss->loss_type == LOSS_MEAN_SQUARED_ERROR_AVG_REDUCE) {
-      mean_squared_error_avg_loss_backward<<<GET_BLOCKS(acc_logit.rect.volume()), CUDA_NUM_THREADS>>>(
+      mean_squared_error_avg_loss_backward<<<GET_BLOCKS(acc_logit.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
           acc_logit_grad.ptr, acc_logit.ptr, acc_label.ptr,
           acc_logit.rect.volume());
       // Scale logit gradients by loss->scale_factor
-      scale_kernel<<<GET_BLOCKS(acc_logit_grad.rect.volume()), CUDA_NUM_THREADS>>>(
+      scale_kernel<<<GET_BLOCKS(acc_logit_grad.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
           acc_logit_grad.ptr, acc_logit_grad.rect.volume(), 0, loss->scale_factor);
     } else {
       fprintf(stderr, "Unsupported loss --- report this error to the FlexFlow developers\n");

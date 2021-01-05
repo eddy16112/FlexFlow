@@ -315,7 +315,7 @@ void ElementUnary::forward_kernel(const ElementUnaryMeta* m,
         &alpha, m->inputTensor, input_ptr,
         &beta, m->outputTensor, output_ptr));
   } else {
-    elewise_unary_forward_kernel<<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS>>>(
+    elewise_unary_forward_kernel<<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS, 0, stream>>>(
         num_elements, alpha, beta, m->op_type, input_ptr, output_ptr);
   } 
 }
@@ -344,9 +344,10 @@ void ElementUnary::forward_task(const Task* task,
   float* output_ptr = helperGetTensorPointerWO<float>(
     regions[1], task->regions[1], FID_DATA, ctx, runtime);
 
+  cudaStream_t stream = get_stream();
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  //cudaStream_t stream;
+  //checkCUDA(cudaStreamCreate(&stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
   forward_kernel(m, input_ptr, output_ptr, output_domain.get_volume());
@@ -428,7 +429,7 @@ void ElementUnary::backward_kernel(const ElementUnaryMeta* m,
         &alpha, m->outputTensor, output_ptr, m->outputTensor, output_grad_ptr,
         m->inputTensor, input_ptr, &alpha, m->inputTensor, input_grad_ptr));
   } else {
-    elewise_unary_backward_kernel<<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS>>>(
+    elewise_unary_backward_kernel<<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS, 0, stream>>>(
         num_elements, alpha, alpha, m->op_type, output_grad_ptr, input_ptr, input_grad_ptr);
   }
 }
@@ -468,9 +469,11 @@ void ElementUnary::backward_task(const Task* task,
     regions[2], task->regions[2], FID_DATA, ctx, runtime);
   const float* output_grad_ptr = helperGetTensorPointerRO<float>(
     regions[3], task->regions[3], FID_DATA, ctx, runtime);
+  
+  cudaStream_t stream = get_stream();
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  //cudaStream_t stream;
+  //checkCUDA(cudaStreamCreate(&stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
   backward_kernel(m, input_ptr, input_grad_ptr, output_ptr, output_grad_ptr, input_domain.get_volume());

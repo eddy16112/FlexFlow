@@ -260,9 +260,10 @@ void BatchMatmul::forward_task(const Task* task,
     cudaEventCreate(&t_end);
     cudaEventRecord(t_start);
   }
+  cudaStream_t stream = get_stream();
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  //cudaStream_t stream;
+  //checkCUDA(cudaStreamCreate(&stream));
   checkCUDA(cublasSetStream(meta->handle.blas, stream));
   checkCUDNN(cudnnSetStream(meta->handle.dnn, stream));
 #endif
@@ -429,9 +430,10 @@ void BatchMatmul::backward_task(const Task *task,
     cudaEventCreate(&t_end);
     cudaEventRecord(t_start);
   }
+  cudaStream_t stream = get_stream();
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  //cudaStream_t stream;
+  //checkCUDA(cudaStreamCreate(&stream));
   checkCUDA(cublasSetStream(meta->handle.blas, stream));
   checkCUDNN(cudnnSetStream(meta->handle.dnn, stream));
 #endif

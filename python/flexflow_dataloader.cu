@@ -34,7 +34,8 @@ void ImgDataLoader::load_label(const Task *task,
   for (int i = 1; i < batch_size; i++)
     assert(meta->idxs[i] == meta->idxs[0] + i);
   const int* input_zc = acc_full_label.ptr + meta->idxs[0];
-  copy_kernel<<<GET_BLOCKS(acc_batch_label.rect.volume()), CUDA_NUM_THREADS>>>(
+  cudaStream_t stream = get_stream();
+  copy_kernel<<<GET_BLOCKS(acc_batch_label.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
     acc_batch_label.ptr, input_zc, acc_batch_label.rect.volume());
   checkCUDA(cudaDeviceSynchronize());
 }
@@ -62,7 +63,8 @@ void ImgDataLoader4D::load_input(const Task *task,
   coord_t start_idx = meta->idxs[0];
   const float* input_zc = acc_full_input.ptr + start_idx * channels * height * width;
   //printf("load input %d %d %d %d\n", meta->idxs[0], channels, height, width);
-  copy_kernel<<<GET_BLOCKS(acc_batch_input.rect.volume()), CUDA_NUM_THREADS>>>(
+  cudaStream_t stream = get_stream();
+  copy_kernel<<<GET_BLOCKS(acc_batch_input.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
       acc_batch_input.ptr, input_zc, acc_batch_input.rect.volume());
   checkCUDA(cudaDeviceSynchronize());
 }
@@ -88,7 +90,8 @@ void ImgDataLoader2D::load_input(const Task *task,
   coord_t start_idx = meta->idxs[0];
   const float* input_zc = acc_full_input.ptr + start_idx * width;
   //printf("load input %d %d %d %d\n", meta->idxs[0], channels, height, width);
-  copy_kernel<<<GET_BLOCKS(acc_batch_input.rect.volume()), CUDA_NUM_THREADS>>>(
+  cudaStream_t stream = get_stream();
+  copy_kernel<<<GET_BLOCKS(acc_batch_input.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
       acc_batch_input.ptr, input_zc, acc_batch_input.rect.volume());
   checkCUDA(cudaDeviceSynchronize());
 }
@@ -135,7 +138,8 @@ void SingleDataLoader::load_input_with_dim(const Task *task,
   coord_t start_idx = meta->idxs[0];
   const DT* input_zc = acc_full_input.ptr + start_idx * num_elements_per_batch;
   //printf("load input %d %d %d %d\n", meta->idxs[0], channels, height, width);
-  copy_kernel<DT><<<GET_BLOCKS(acc_batch_input.rect.volume()), CUDA_NUM_THREADS>>>(
+  cudaStream_t stream = get_stream();
+  copy_kernel<DT><<<GET_BLOCKS(acc_batch_input.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
       acc_batch_input.ptr, input_zc, acc_batch_input.rect.volume());
   checkCUDA(cudaDeviceSynchronize());
 }
