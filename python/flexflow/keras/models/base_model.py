@@ -475,7 +475,7 @@ class BaseModel(object):
           t_ffhandle_list.append(t.ffhandle)
         out_t = self._ffmodel.concat(t_ffhandle_list, op.layer.axis)
       elif isinstance(op, _Conv2DOp) == True:
-        out_t = self._ffmodel.conv2d(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.kernel_size[0], op.layer.kernel_size[1], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.activation, op.layer.use_bias, shared_op, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
+        out_t = self._ffmodel.conv2d(op.input_tensors[0].ffhandle, op.layer.out_channels, op.layer.kernel_size[0], op.layer.kernel_size[1], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.activation, op.layer.groups, op.layer.use_bias, shared_op, op.layer.kernel_initializer.ffhandle, op.layer.bias_initializer.ffhandle)
       elif isinstance(op, _Pooling2DOp) == True:
         out_t = self._ffmodel.pool2d(op.input_tensors[0].ffhandle, op.layer.kernel_size[1], op.layer.kernel_size[0], op.layer.stride[0], op.layer.stride[1], op.layer.padding[0], op.layer.padding[1], op.layer.pool_type)
       elif isinstance(op, _FlattenOp) == True:
