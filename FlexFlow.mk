@@ -103,6 +103,7 @@ ifeq ($(strip $(FF_ENABLE_NCCL)), 1)
 INC_FLAGS  += -I$(MPI_HOME)/include -I$(NCCL_HOME)/include
 CC_FLAGS   += -DFF_ENABLE_NCCL
 NVCC_FLAGS += -DFF_ENABLE_NCCL
+HIPCC_FLAGS += -DFF_ENABLE_NCCL
 LD_FLAGS   += -L$(NCCL_HOME)/lib -lnccl
 endif
 
