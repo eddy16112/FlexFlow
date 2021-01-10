@@ -275,9 +275,10 @@ void MultiHeadAttention::forward_task(
     cudaEventCreate(&t_end);
     cudaEventRecord(t_start);
   }
+  cudaStream_t stream = get_stream();
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  //cudaStream_t stream;
+  //checkCUDA(cudaStreamCreate(&stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
   attn->forward_kernel(m, acc_query.ptr, acc_key.ptr, acc_value.ptr,
@@ -434,9 +435,10 @@ void MultiHeadAttention::backward_task(
     cudaEventRecord(t_start);
   }
 
+  cudaStream_t stream = get_stream();
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-  cudaStream_t stream;
-  checkCUDA(cudaStreamCreate(&stream));
+  //cudaStream_t stream;
+  //checkCUDA(cudaStreamCreate(&stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
   attn->backward_kernel(m, acc_query.ptr, acc_query_grad.ptr,
