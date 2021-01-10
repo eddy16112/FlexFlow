@@ -207,6 +207,31 @@ Op::Op(FFModel& model,
 Op::Op(FFModel& model,
        OperatorType _op_type,
        const std::string& _name,
+       const Tensor& _input1,
+       const Tensor& _input2,
+       const Tensor& _input3)
+: op_type(_op_type), numInputs(3), numWeights(0), numOutputs(1)
+{
+  std::string pcname = _name + "_" + std::to_string(model.op_global_guid++);
+  assert(pcname.length() < MAX_OPNAME);
+  std::strcpy(name, pcname.c_str());
+  inputs[0] = _input1;
+  inputs[1] = _input2;
+  inputs[2] = _input3;
+  //for (int i = 0; i < numInputs; i++) {
+  //  trainableInputs[i] = true;
+  //  resetInputGrads[i] = true;
+  //}
+  for (int i = 0; i < MAX_NUM_OUTPUTS; i++) {
+    outputs[i].owner_op = this;
+    outputs[i].owner_idx = i;
+    outputs[i].data_type = inputs[0].data_type;
+  }
+}
+
+Op::Op(FFModel& model,
+       OperatorType _op_type,
+       const std::string& _name,
        int n, const Tensor* _inputs)
 : op_type(_op_type), numInputs(n), numWeights(0), numOutputs(1)
 {
@@ -444,6 +469,8 @@ FFModel::FFModel(FFConfig& _config)
   Rect<2> task_rect(Point<2>(0, 0),
                     Point<2>(0, config.workersPerNode * config.numNodes - 1));
   IndexSpaceT<2> task_is = runtime->create_index_space(ctx, task_rect);
+
+#ifdef FF_ENABLE_NCCL  
   // Init NCCL id
   int my_rank = -1, all_ranks = -1;
   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
@@ -452,10 +479,13 @@ FFModel::FFModel(FFConfig& _config)
   ncclUniqueId id;
   if (my_rank == 0) ncclGetUniqueId(&id);
   MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
+#endif
   int rank = 0;
   for (PointInRectIterator<2> it(task_rect); it(); it++) {
     FFInitInfo info;
+#ifdef FF_ENABLE_NCCL
     info.ncclId = id;
+#endif
     info.myRank = rank++;
     info.allRanks = config.workersPerNode * config.numNodes;
     info.workSpaceSize = config.workSpaceSize;
@@ -2146,6 +2176,28 @@ void register_internal_tasks()
     Runtime::preregister_task_variant<Transpose::backward_task>(
         registrar, "Transpose Backward Task");
   }
+  // MultiHeadAttention task
+  {
+    TaskVariantRegistrar registrar(ATTENTION_INIT_TASK_ID, "MultiHeadAttention Init");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    Runtime::preregister_task_variant<OpMeta*, MultiHeadAttention::init_task>(
+        registrar, "MultiHeadAttention Init Task");
+  }
+  {
+    TaskVariantRegistrar registrar(ATTENTION_FWD_TASK_ID, "MultiHeadAttention Forward");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    Runtime::preregister_task_variant<MultiHeadAttention::forward_task>(
+        registrar, "MultiHeadAttention Forward Task");
+  }
+  {
+    TaskVariantRegistrar registrar(ATTENTION_BWD_TASK_ID, "MultiHeadAttention Backward");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    Runtime::preregister_task_variant<MultiHeadAttention::backward_task>(
+        registrar, "MultiHeadAttention Backward Task");
+  }
   // FusedOp Task
   {
     TaskVariantRegistrar registrar(FUSEDOP_FWD_TASK_ID, "FusedOp Forward");
@@ -2171,20 +2223,21 @@ void register_internal_tasks()
         registrar, "SGD Parameter Server Update Task");
   }
   {
-    TaskVariantRegistrar registrar(SGD_UPD_NCCL_TASK_ID,
-                                   "SGD NCCL Update");
-    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
-    registrar.set_leaf();
-    Runtime::preregister_task_variant<SGDOptimizer::nccl_update_task>(
-        registrar, "SGD NCCL Update Task");
-  }
-  {
     TaskVariantRegistrar registrar(ADAM_UPD_PS_TASK_ID,
                                    "Adam Parameter Server Update");
     registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
     registrar.set_leaf();
     Runtime::preregister_task_variant<AdamOptimizer::ps_update_task>(
         registrar, "Adam Parameter Server Update Task");
+  }
+#ifdef FF_ENABLE_NCCL  
+  {
+    TaskVariantRegistrar registrar(SGD_UPD_NCCL_TASK_ID,
+                                   "SGD NCCL Update");
+    registrar.add_constraint(ProcessorConstraint(Processor::TOC_PROC));
+    registrar.set_leaf();
+    Runtime::preregister_task_variant<SGDOptimizer::nccl_update_task>(
+        registrar, "SGD NCCL Update Task");
   }
   {
     TaskVariantRegistrar registrar(ADAM_UPD_NCCL_TASK_ID,
@@ -2194,6 +2247,7 @@ void register_internal_tasks()
     Runtime::preregister_task_variant<AdamOptimizer::nccl_update_task>(
         registrar, "Adam NCCL Update Task");
   }
+#endif
   // Initializer
   {
     TaskVariantRegistrar registrar(ZERO_INIT_TASK_ID,

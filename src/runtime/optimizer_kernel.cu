@@ -109,6 +109,7 @@ void SGDOptimizer::ps_update_task(const Task* task,
   //checkCUDA(cudaDeviceSynchronize());
 }
 
+#ifdef FF_ENABLE_NCCL
 __host__
 void SGDOptimizer::nccl_update_task(
     const Task* task,
@@ -161,11 +162,16 @@ void SGDOptimizer::nccl_update_task(
   }
 
   // Use NCCL to sync gradients
+#ifndef DISABLE_LEGION_CUDA_HIJACK
   cudaStream_t stream = get_stream();
   //cudaStream_t stream;
   //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
       ncclSum, handler.nccl, stream));
+#else
+  checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
+      ncclSum, handler.nccl, 0));
+#endif
 
   // Step 2: SGD update
   sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
@@ -173,6 +179,7 @@ void SGDOptimizer::nccl_update_task(
       w_grad_ptr, v_ptr, w_ptr);
   //checkCUDA(cudaDeviceSynchronize());
 }
+#endif
 
 // ==================================================================
 //                        Adam Optimizer
@@ -284,6 +291,7 @@ void AdamOptimizer::ps_update_task(const Task* task,
   //checkCUDA(cudaDeviceSynchronize());
 }
 
+#ifdef FF_ENABLE_NCCL
 __host__
 void AdamOptimizer::nccl_update_task(const Task* task,
                                      const std::vector<PhysicalRegion>& regions,
@@ -332,12 +340,16 @@ void AdamOptimizer::nccl_update_task(const Task* task,
     }
   }
   // Use NCCL to sync gradients
+#ifndef DISABLE_LEGION_CUDA_HIJACK
   cudaStream_t stream = get_stream();
   //cudaStream_t stream;
   //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
       ncclSum, handler.nccl, stream));
-
+#else
+  checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
+      ncclSum, handler.nccl, 0));
+#endif
   //fprintf(stderr, "alpha = %.8lf alpha_t = %.8lf decay = %.8lf\n",
   //        op->alpha, op->alpha_t, op->weight_decay);
   // Step 2: Adam update
@@ -347,4 +359,4 @@ void AdamOptimizer::nccl_update_task(const Task* task,
       w_grad_ptr, m_ptr, v_ptr, w_ptr);
   //checkCUDA(cudaDeviceSynchronize());
 }
-
+#endif
