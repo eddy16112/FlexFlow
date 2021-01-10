@@ -53,7 +53,7 @@ GEN_SRC		+= ${FF_HOME}/src/runtime/model.cc\
 		${FF_HOME}/src/runtime/simulator.cc\
 		${FF_HOME}/src/metrics_functions/metrics_functions.cc
 
-GEN_GPU_SRC	+= ${FF_HOME}/src/ops/conv_2d.cu\
+GEN_HIP_SRC	+= ${FF_HOME}/src/ops/conv_2d.cu\
 		${FF_HOME}/src/runtime/model.cu\
 		${FF_HOME}/src/ops/pool_2d.cu\
 		${FF_HOME}/src/ops/batch_norm.cu\
@@ -84,10 +84,12 @@ INC_FLAGS	+= -I${FF_HOME}/include/ -I$(PROTOBUF_INC) -I$(CUDNN_HOME)/include -I$
 LD_FLAGS	+= -lcudnn -lcublas -lcurand -lprotobuf -L$(PROTOBUF_LIB) -L$(CUDNN_HOME)/lib64 -L$(CUDA_HOME)/lib64 #-mavx2 -mfma -mf16c
 CC_FLAGS	+= -DMAX_TENSOR_DIM=$(MAX_DIM)
 NVCC_FLAGS	+= -DMAX_TENSOR_DIM=$(MAX_DIM)
+HIPCC_FLAGS     += -DMAX_TENSOR_DIM=$(MAX_DIM)
 GASNET_FLAGS	+=
 # For Point and Rect typedefs
 CC_FLAGS	    += -std=c++11 #-DMAX_RETURN_SIZE=16777216
 NVCC_FLAGS  	+= -std=c++11 #-DMAX_RETURN_SIZE=16777216
+HIPCC_FLAGS     += -std=c++11 #-DMAX_RETURN_SIZE=16777216
 
 #ifndef HDF5
 #HDF5_inc	?= /usr/include/hdf5/serial
