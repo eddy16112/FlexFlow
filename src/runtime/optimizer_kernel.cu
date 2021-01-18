@@ -117,7 +117,8 @@ void SGDOptimizer::nccl_update_task(
     Context ctx, Runtime* runtime)
 {
   const SGDOptimizer* op = (SGDOptimizer*) task->args;
-  FFHandler handler = *((FFHandler*) task->local_args);
+  const OpMeta* meta = *((OpMeta**) task->local_args);
+  //FFHandler handler = *((FFHandler*) task->local_args);
   if (op->momentum > 0.0f) {
     assert(regions.size() == 3);
     assert(task->regions.size() == 3);
@@ -162,16 +163,18 @@ void SGDOptimizer::nccl_update_task(
   }
 
   // Use NCCL to sync gradients
+  //fprintf(stderr, "weight(%p) Before ncclAllReduce...\n", w_grad_ptr);
 #ifndef DISABLE_LEGION_CUDA_HIJACK
   cudaStream_t stream = get_stream();
   //cudaStream_t stream;
   //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
-      ncclSum, handler.nccl, stream));
+      ncclSum, meta->ncclComm, stream));
 #else
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*) w_grad_ptr, size, ncclFloat,
-      ncclSum, handler.nccl, 0));
+      ncclSum, meta->ncclComm, 0));
 #endif
+  //fprintf(stderr, "weight(%p) After ncclAllReduce...\n", w_grad_ptr);
 
   // Step 2: SGD update
   sgd_update<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
@@ -300,7 +303,8 @@ void AdamOptimizer::nccl_update_task(const Task* task,
   assert(regions.size() == 4);
   assert(task->regions.size() == 4);
   const AdamOptimizer* op = (AdamOptimizer*) task->args;
-  FFHandler handler = *((FFHandler*) task->local_args);
+  const OpMeta* meta = *((OpMeta**) task->local_args);
+  //FFHandler handler = *((FFHandler*) task->local_args);
   Domain domain = runtime->get_index_space_domain(ctx,
       task->regions[1].region.get_index_space());
   const float *w_grad_ptr = NULL;
@@ -345,10 +349,10 @@ void AdamOptimizer::nccl_update_task(const Task* task,
   //cudaStream_t stream;
   //checkCUDA(cudaStreamCreate(&stream));
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
-      ncclSum, handler.nccl, stream));
+      ncclSum, meta->ncclComm, stream));
 #else
   checkNCCL(ncclAllReduce(w_grad_ptr, (float*)w_grad_ptr, size, ncclFloat,
-      ncclSum, handler.nccl, 0));
+      ncclSum, meta->ncclComm, 0));
 #endif
   //fprintf(stderr, "alpha = %.8lf alpha_t = %.8lf decay = %.8lf\n",
   //        op->alpha, op->alpha_t, op->weight_decay);
