@@ -241,6 +241,7 @@ void Softmax::backward_kernel(float *input_grad_ptr,
                               float const *output_grad_ptr,
                               size_t num_elements)
 {
+  cudaStream_t stream = get_stream();  
   checkCUDA(cudaMemcpyAsync(input_grad_ptr, output_grad_ptr,
                             num_elements * sizeof(float),
                             cudaMemcpyDeviceToDevice, stream));
