@@ -37,25 +37,6 @@ Tensor FFModel::dense(const Tensor& input,
   return li->outputs[0];
 }
 
-Linear* FFModel::dense(int inDim, int outDim, 
-                       ActiMode activation,
-                       bool use_bias,
-                       Initializer* kernel_initializer,
-                       Initializer* bias_initializer)
-{
-  if (kernel_initializer == NULL) {
-    int seed = std::rand();
-    kernel_initializer = new GlorotUniform(seed);
-  }
-  if (bias_initializer == NULL) {
-    bias_initializer = new ZeroInitializer();
-  }
-  Linear *li = new Linear(*this, inDim, outDim, activation, use_bias,
-                          kernel_initializer, bias_initializer);
-  layers.push_back(li);
-  return li;
-}
-
 Linear::Linear(FFModel& model,
                const Tensor& _input,
                int out_dim,
@@ -87,42 +68,6 @@ Linear::Linear(FFModel& model,
     numWeights = 2;
   }
 }
-
-Linear::Linear(FFModel& model,
-               int in_dim, int out_dim,
-               ActiMode _activation,
-               bool _use_bias,
-               Initializer* _kernel_initializer,
-               Initializer* _bias_initializer)
-: Op(model, OP_LINEAR, "Dense_"+std::to_string(out_dim), 1), 
-  in_channels(in_dim), out_channels(out_dim),
-  activation(_activation), use_bias(_use_bias),
-  kernel_initializer(_kernel_initializer),
-  bias_initializer(_bias_initializer),
-  profiling(model.config.profiling)
-{
-}
-
-Tensor Linear::init_inout(FFModel& model, const Tensor& _input)
-{
-  assert(_input.adim[0] == in_channels);
-  inputs[0] = _input;
-  create_output_and_partition(model);
-  return outputs[0];
-}
-
-/*
-void Linear::add_to_model(FFModel& model)
-{
-  model.layers.push_back(this);
-  model.parameters.push_back(weights[0]);
-  if (numWeights > 1) { // bias is used
-    assert(numWeights == 2);
-    model.parameters.push_back(weights[1]);
-  }
-}
-*/
-
 
 void Linear::create_weights(FFModel& model)
 {
@@ -1049,4 +994,37 @@ bool Linear::measure_compute_time(Simulator* sim,
   return true;
 }
 
+ParallelConfig Linear::get_random_parallel_config(const FFModel& ff) const
+{
+  if (!ff.config.enable_parameter_parallel)
+    return Op::get_random_parallel_config(ff);
+  std::vector<int> batch_candidates;
+  std::vector<int> channel_candidates;
+  int batch = outputs[0].adim[outputs[0].numDim-1];
+  int channel = outputs[0].adim[0];
+  int total_devices = ff.config.workersPerNode * ff.config.numNodes;
+  for (int i = 1; i <= ff.config.workersPerNode; i++)
+    if (channel % i == 0)
+      for (int j = 1; i * j <= total_devices; j++)
+        if (batch % j == 0) {
+          batch_candidates.push_back(j);
+          channel_candidates.push_back(i);
+        }
+  assert(batch_candidates.size() > 0);
+  int idx = std::rand() % batch_candidates.size();
+  int num_par_c = channel_candidates[idx];
+  int num_par_b = batch_candidates[idx];
+  ParallelConfig pc;
+  pc.device_type = ParallelConfig::GPU;
+  pc.nDims = outputs[0].numDim;
+  pc.dim[0] = num_par_c;
+  pc.dim[pc.nDims-1] = num_par_b;
+  for (int i = 1; i < pc.nDims - 1; i++)
+    pc.dim[i] = 1;
+  int start_idx = std::rand() % (total_devices - num_par_c * num_par_b + 1);
+  start_idx = start_idx - start_idx % num_par_c;
+  for (int i = 0; i < num_par_c * num_par_b; i++)
+    pc.device_ids[i] = start_idx + i;
+  return pc;
+}
 
