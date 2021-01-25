@@ -177,9 +177,10 @@ void Tanh<DIM>::forward_task(const Task *task,
   TensorAccessorW<float, DIM> acc_output(
     regions[1], task->regions[1], FID_DATA, ctx, runtime,
     false/*readOutput*/);
+  cudaStream_t stream = get_stream();
 #ifndef DISABLE_LEGION_CUDA_HIJACK
-    cudaStream_t stream;
-    checkCUDA(cudaStreamCreate(&stream));
+    //cudaStream_t stream;
+    //checkCUDA(cudaStreamCreate(&stream));
     checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
   // DOUBLE CHECK HANDLE TO PREVENT SEGMENTATION FAULT
