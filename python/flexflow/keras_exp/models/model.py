@@ -122,6 +122,10 @@ class BaseModel(object):
     self._create_input_tensors()
     self._create_flexflow_layers()
     
+    layers = self._ffmodel.get_layers()
+    for l in layers:
+      print(l, layers[l])
+    
     if isinstance(optimizer, tf_keras_optimizer.Optimizer) == True:
       if isinstance(optimizer, tf_keras_optimizer.SGD) == True:
         self._ffoptimizer = ff_keras_optimizer.SGD(learning_rate=optimizer.learning_rate.numpy(), momentum=optimizer.momentum.numpy(), nesterov=optimizer.nesterov)
