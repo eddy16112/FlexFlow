@@ -13,7 +13,10 @@
 # limitations under the License.
 #
 
-from tensorflow.keras.models import Model as keras_Model
+from tensorflow.keras.models import Model as tf_keras_Model
+from tensorflow.keras import optimizers as tf_keras_optimizer
+#from tensorflow.keras import losses as tf_keras_losses
+#from tensorflow.keras import metrics as tf_keras_metrics
 import keras2onnx
 import onnx
 
@@ -21,10 +24,10 @@ import flexflow.core as ff
 from flexflow.core.flexflow_logger import fflogger
 
 from .tensor import Tensor
-from flexflow.keras.optimizers import SGD, Adam
+from flexflow.keras import optimizers as ff_keras_optimizer
 from flexflow.keras.callbacks import Callback, LearningRateScheduler, VerifyMetrics, EpochVerifyMetrics
-from flexflow.keras import losses as keras_losses
-from flexflow.keras import metrics as keras_metrics
+from flexflow.keras import losses as ff_keras_losses
+from flexflow.keras import metrics as ff_keras_metrics
 
 from flexflow.onnx.model import ONNXModelKeras
 
@@ -87,35 +90,31 @@ class BaseModel(object):
       assert 0, "run_eagerly is not supported"
 
     assert loss != None, "loss is None"
-    if isinstance(loss, keras_losses.Loss) == True:
-      self._loss = loss
-    elif loss == 'categorical_crossentropy':
-      self._loss = keras_losses.CategoricalCrossentropy()
+    if loss == 'categorical_crossentropy':
+      self._loss = ff_keras_losses.CategoricalCrossentropy()
     elif loss == 'sparse_categorical_crossentropy':
-      self._loss = keras_losses.SparseCategoricalCrossentropy()
+      self._loss = ff_keras_losses.SparseCategoricalCrossentropy()
       self._label_type = ff.DataType.DT_INT32
     elif loss == 'mean_squared_error':
-      self._loss = keras_losses.MeanSquaredError()
+      self._loss = ff_keras_losses.MeanSquaredError()
     else:
       assert 0, 'Unsupported loss'
 
     assert metrics != None, "metrics is None"
     assert isinstance(metrics, list) == True, 'Metrics should be a list'
     for metric in metrics:
-      if isinstance(metric, keras_metrics.Metric) == True:
-        self._metrics.append(metric)
-      elif metric == 'accuracy':
-        self._metrics.append(keras_metrics.Accuracy())
+      if metric == 'accuracy':
+        self._metrics.append(ff_keras_metrics.Accuracy())
       elif metric == 'categorical_crossentropy':
-        self._metrics.append(keras_metrics.CategoricalCrossentropy())
+        self._metrics.append(ff_keras_metrics.CategoricalCrossentropy())
       elif metric == 'sparse_categorical_crossentropy':
-        self._metrics.append(keras_metrics.SparseCategoricalCrossentropy())
+        self._metrics.append(ff_keras_metrics.SparseCategoricalCrossentropy())
       elif metric == 'mean_squared_error':
-        self._metrics.append(keras_metrics.MeanSquaredError())
+        self._metrics.append(ff_keras_metrics.MeanSquaredError())
       elif metric == 'root_mean_squared_error':
-        self._metrics.append(keras_metrics.RootMeanSquaredError())
+        self._metrics.append(ff_keras_metrics.RootMeanSquaredError())
       elif metric == 'mean_absolute_error':
-        self._metrics.append(keras_metrics.MeanAbsoluteError())
+        self._metrics.append(ff_keras_metrics.MeanAbsoluteError())
       else:
         assert 0, 'Unsupported metric'
         
@@ -123,7 +122,23 @@ class BaseModel(object):
     self._create_input_tensors()
     self._create_flexflow_layers()
     
-    self._ffoptimizer = optimizer
+    if isinstance(optimizer, tf_keras_optimizer.Optimizer) == True:
+      if isinstance(optimizer, tf_keras_optimizer.SGD) == True:
+        self._ffoptimizer = ff_keras_optimizer.SGD(learning_rate=optimizer.learning_rate.numpy(), momentum=optimizer.momentum.numpy(), nesterov=optimizer.nesterov)
+      elif isinstance(optimizer, tf_keras_optimizer.Adam) == True:
+        self._ffoptimizer = ff_keras_optimizer.Adam(learning_rate=optimizer.learning_rate.numpy(), beta_1=optimizer.beta_1.numpy(), beta_2=optimizer.beta_2.numpy(), epsilon=optimizer.epsilon.numpy())
+      else:
+        assert 0, "Unsupported optimizer"
+    elif type(optimizer) == str:
+      if optimizer == 'SGD':
+        self._ffoptimizer = ff_keras_optimizer.SGD()
+      elif optimizer == 'Adam':
+        self._ffoptimizer = ff_keras_optimizer.Adam()
+      else:
+        assert 0, "Unsupported optimizer"
+    else:
+      assert 0, "Unsupported optimizer"
+
     self._create_optimizer()
     metrics_type = []
     for metric in self._metrics:
@@ -213,7 +228,7 @@ class BaseModel(object):
     
   def _create_optimizer(self):
     assert self._ffoptimizer != None, "optimizer is not set"
-    if (isinstance(self._ffoptimizer, SGD) == True) or (isinstance(self._ffoptimizer, Adam) == True):
+    if (isinstance(self._ffoptimizer, ff_keras_optimizer.SGD) == True) or (isinstance(self._ffoptimizer, ff_keras_optimizer.Adam) == True):
       self._ffoptimizer.create_ffhandle(self._ffmodel)
     else:
       assert 0, "unknown optimizer"
@@ -345,7 +360,7 @@ class BaseModel(object):
       for callback in callbacks:
         callback.on_train_end()
     
-class Model(keras_Model):
+class Model(tf_keras_Model):
   def __init__(self, inputs, outputs, name=None):
     super(Model, self).__init__(inputs=inputs, outputs=outputs, name=name)
     
@@ -389,7 +404,7 @@ class Model(keras_Model):
       validation_batch_size=validation_batch_size, validation_freq=validation_freq, max_queue_size=max_queue_size, workers=workers,
       use_multiprocessing=use_multiprocessing)
       
-class Sequential(keras_Model):
+class Sequential(tf_keras_Model):
   def __init__(self, inputs, outputs, name=None):
     super(Sequential, self).__init__(inputs=inputs, outputs=outputs, name=name)
     

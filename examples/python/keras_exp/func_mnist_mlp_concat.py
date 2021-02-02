@@ -13,14 +13,11 @@
 # limitations under the License.
 #
 from tensorflow.keras import backend
-from flexflow.keras_exp.models import Model
 from tensorflow.keras.layers import Input, Flatten, Dense, Activation, Conv2D, MaxPooling2D, Concatenate, concatenate
-import flexflow.keras.optimizers
+from tensorflow.keras import optimizers
+
+from flexflow.keras_exp.models import Model
 from flexflow.keras.datasets import mnist
-from flexflow.keras.datasets import cifar10
-from flexflow.keras import losses
-from flexflow.keras import metrics
-from flexflow.keras.callbacks import Callback, VerifyMetrics, EpochVerifyMetrics
 
 import flexflow.core as ff
 import numpy as np
@@ -70,7 +67,7 @@ def top_level_task():
   
   model = Model({5: input_tensor1, 6: input_tensor2}, output)
 
-  opt = flexflow.keras.optimizers.SGD(learning_rate=0.01)
+  opt = optimizers.SGD(learning_rate=0.01)
   model.compile(optimizer=opt, loss='sparse_categorical_crossentropy', metrics=['accuracy', 'sparse_categorical_crossentropy'])
   
   print(model.summary())

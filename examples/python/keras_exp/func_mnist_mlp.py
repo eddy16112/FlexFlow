@@ -15,9 +15,10 @@
 from tensorflow.keras import backend
 
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Activation, Input
+from tensorflow.keras import optimizers
 
 from flexflow.keras_exp.models import Model
-import flexflow.keras.optimizers
+
 from flexflow.keras.datasets import mnist
 
 import flexflow.core as ff
@@ -49,7 +50,7 @@ def top_level_task():
   
   print(model.summary())
   
-  opt = flexflow.keras.optimizers.SGD(learning_rate=0.01)
+  opt = optimizers.SGD(learning_rate=0.01)
   model.compile(optimizer=opt, loss='sparse_categorical_crossentropy', metrics=['accuracy', 'sparse_categorical_crossentropy'])
   model.fit(x_train, y_train, batch_size=64, epochs=1)
   
