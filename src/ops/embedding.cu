@@ -329,9 +329,12 @@ void Embedding::backward_task(const Task *task,
   int out_dim = accOutput.rect.hi[0] - accOutput.rect.lo[0] + 1;
   int batch_size = accOutput.rect.hi[1] - accOutput.rect.lo[1] + 1;
   backward_kernel(accInput.ptr, accOutput.ptr, accWeightGrad.ptr, in_dim, out_dim, batch_size, embed->aggr, accOutput.rect.volume());
+<<<<<<< HEAD
   cudaStream_t stream = get_stream();
   embed_backward<<<GET_BLOCKS(accOutput.rect.volume()), CUDA_NUM_THREADS, 0, stream>>>(
       accInput.ptr, accOutput.ptr, accWeightGrad.ptr, out_dim, in_dim, batch_size, embed->aggr);
+=======
+>>>>>>> upstream/nccl
   if (embed->profiling) {
     checkCUDA(cudaDeviceSynchronize());
     print_tensor<float>(accOutput.ptr, accOutput.rect.volume(), "[Embedding:backward:output_grad]");
