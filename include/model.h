@@ -27,7 +27,7 @@
 #include <curand.h>
 #include <unistd.h>
 #include <functional>
-#ifdef FF_ENABLE_NCCL
+#ifdef FF_USE_NCCL
 #include <mpi.h>
 #endif
 
@@ -126,6 +126,8 @@ enum TaskIDs {
   // Python data loader
   PY_DL_FLOAT_LOAD_ENTIRE_CPU_TASK_ID,
   PY_DL_INT_LOAD_ENTIRE_CPU_TASK_ID,
+  PY_DL_FLOAT_INDEX_LOAD_ENTIRE_CPU_TASK_ID,
+  PY_DL_INT_INDEX_LOAD_ENTIRE_CPU_TASK_ID,
   PY_DL_FLOAT_LOAD_BATCH_GPU_TASK_ID,
   PY_DL_INT_LOAD_BATCH_GPU_TASK_ID,
   // Custom tasks
@@ -170,12 +172,12 @@ class DataLoader;
 class OpMeta {
 public:
   OpMeta(FFHandler _handle);
-#ifdef FF_ENABLE_NCCL
+#ifdef FF_USE_NCCL
   void init_nccl_communicator(const Task* task, ncclUniqueId ncclId);
 #endif
 public:
   FFHandler handle;
-#ifdef FF_ENABLE_NCCL
+#ifdef FF_USE_NCCL
   ncclComm_t ncclComm;
 #endif
 };
@@ -213,7 +215,7 @@ public:
   void prefetch(const FFModel&);
   void zero_grad(const FFModel&);
   Parameter* get_parameter(int index);
-#ifdef FF_ENABLE_NCCL
+#ifdef FF_USE_NCCL
   void get_nccl_unique_id();
 #endif
 public:
@@ -229,7 +231,7 @@ public:
   //Tensor locals[MAX_NUM_LOCALS];
   OpMeta* meta[MAX_NUM_WORKERS];
   int numInputs, numWeights, numOutputs;
-#ifdef FF_ENABLE_NCCL
+#ifdef FF_USE_NCCL
   ncclUniqueId ncclId;
 #endif
 };

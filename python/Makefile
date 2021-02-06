@@ -23,7 +23,8 @@ USE_HDF         ?= 0		# Include HDF5 support (requires HDF5)
 ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
 USE_HIP         ?= 2
 #USE_HIP_HIJACK  ?= 0
-FF_ENABLE_NCCL  ?= 1
+FF_USE_NCCL  ?= 1
+#USE_CUDART_HIJACK ?= 0
 
 USE_PYTHON := 1
 ifndef PYTHON_LIB
@@ -72,6 +73,11 @@ ifeq ($(strip $(FF_ENABLE_DEBUG)), 1)
 CC_FLAGS += -DFF_DEBUG
 NVCC_FLAGS += -DFF_DEBUG
 HIPCC_FLAGS += -DFF_DEBUG
+endif
+
+ifeq ($(strip $(FF_PYTHON_USE_INDEX_LOADER)), 1)
+CC_FLAGS += -DFF_PYTHON_USE_INDEX_LOADER
+NVCC_FLAGS += -DFF_PYTHON_USE_INDEX_LOADER
 endif
 
 ifeq ($(shell uname), Darwin)
