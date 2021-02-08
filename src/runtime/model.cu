@@ -317,7 +317,9 @@ bool Parameter::set_weights(const FFModel* ff,
   } else if (type == Parameter::PS) {
     num_replicas = 1;
   } else {
-    assert(false);
+    Domain domain = runtime->get_index_space_domain(ctx, owner_op->task_is);
+    num_replicas = domain.get_volume();
+    //assert(false);
   }
   // Check dimensions
   if (numDim != (int)dims.size())
