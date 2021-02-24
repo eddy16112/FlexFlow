@@ -169,19 +169,6 @@ void Linear::create_output_and_partition_with_dim(FFModel& model)
       ctx, inputs[0].part.get_index_partition());
   // Create replica tensor
   if (num_par_c > 1) {
-    if (NDIM==1) {
-      const int dims[2] = {num_par_c, in_dim};
-      replica = model.create_linear_replica<2>(dims, (IndexSpaceT<NDIM>)task_is, DT_FLOAT);
-    } else if (NDIM==2) {
-      const int dims[3] = {num_par_c, batch_size, in_dim};
-      replica = model.create_linear_replica<3>(dims, (IndexSpaceT<NDIM>)task_is, DT_FLOAT);
-    } else if (NDIM==3) {
-      const int dims[4] = {num_par_c, batch_size, inputs[0].adim[1], in_dim};
-      replica = model.create_linear_replica<4>(dims, (IndexSpaceT<NDIM>)task_is, DT_FLOAT);
-    } else {
-      assert(false && "Unsupported dimension for parallelizing Linear operators"
-          " using the parameter dim.");
-    }
     {
       Rect<NDIM> extent;
       for (int i = 1; i < NDIM; i++) {
@@ -203,39 +190,56 @@ void Linear::create_output_and_partition_with_dim(FFModel& model)
       input_lps[0] = runtime->get_logical_partition(
           ctx, inputs[0].region, ip);
     }
-    // Backward use the same ip as inputs[0]
-    input_grad_lps[0] = inputs[0].part_grad;
-    {
-      IndexSpaceT<NDIM> input_task_is = IndexSpaceT<NDIM>(model.get_or_create_task_is(input_rect));
-      Rect<NDIM+1> extent;
-      for (int i = 0; i < NDIM; i++) {
-        extent.lo[i] = 0;
-        assert(inputs[0].adim[i] % (input_rect.hi[i] - input_rect.lo[i] + 1) == 0);
-        extent.hi[i] = inputs[0].adim[i] / (input_rect.hi[i] - input_rect.lo[i] + 1) - 1;
+    if (model.config.computationMode == COMP_MODE_TRAINING) {
+      if (NDIM==1) {
+        const int dims[2] = {num_par_c, in_dim};
+        replica = model.create_linear_replica<2>(dims, (IndexSpaceT<NDIM>)task_is, DT_FLOAT);
+      } else if (NDIM==2) {
+        const int dims[3] = {num_par_c, batch_size, in_dim};
+        replica = model.create_linear_replica<3>(dims, (IndexSpaceT<NDIM>)task_is, DT_FLOAT);
+      } else if (NDIM==3) {
+        const int dims[4] = {num_par_c, batch_size, inputs[0].adim[1], in_dim};
+        replica = model.create_linear_replica<4>(dims, (IndexSpaceT<NDIM>)task_is, DT_FLOAT);
+      } else {
+        assert(false && "Unsupported dimension for parallelizing Linear operators"
+            " using the parameter dim.");
       }
-      extent.lo[NDIM] = 0;
-      extent.hi[NDIM] = num_par_c - 1;
-      Transform<NDIM+1, NDIM> transform;
-      for (int i = 0; i < NDIM+1; i++)
-        for (int j = 0; j < NDIM; j++)
-          transform[i][j] = 0;
-      for (int i = 0; i < NDIM; i++)
-        transform[i][i] = inputs[0].adim[i] / (input_rect.hi[i] - input_rect.lo[i] + 1);
-      IndexPartition ip = runtime->create_partition_by_restriction(
-          ctx, replica.region_grad.get_index_space(), input_task_is,
-          transform, extent);
-      assert(runtime->is_index_partition_disjoint(ctx, ip));
-      assert(runtime->is_index_partition_complete(ctx, ip));
-      // Note we use replica.part to save how to partition the replica
-      // to compute input_grad_lps
-      replica.part = runtime->get_logical_partition(
-          ctx, replica.region_grad, ip);
-    }
-  } 
-  else {
+      // Backward use the same ip as inputs[0]
+      input_grad_lps[0] = inputs[0].part_grad;
+      {
+        IndexSpaceT<NDIM> input_task_is = IndexSpaceT<NDIM>(model.get_or_create_task_is(input_rect));
+        Rect<NDIM+1> extent;
+        for (int i = 0; i < NDIM; i++) {
+          extent.lo[i] = 0;
+          assert(inputs[0].adim[i] % (input_rect.hi[i] - input_rect.lo[i] + 1) == 0);
+          extent.hi[i] = inputs[0].adim[i] / (input_rect.hi[i] - input_rect.lo[i] + 1) - 1;
+        }
+        extent.lo[NDIM] = 0;
+        extent.hi[NDIM] = num_par_c - 1;
+        Transform<NDIM+1, NDIM> transform;
+        for (int i = 0; i < NDIM+1; i++)
+          for (int j = 0; j < NDIM; j++)
+            transform[i][j] = 0;
+        for (int i = 0; i < NDIM; i++)
+          transform[i][i] = inputs[0].adim[i] / (input_rect.hi[i] - input_rect.lo[i] + 1);
+        IndexPartition ip = runtime->create_partition_by_restriction(
+            ctx, replica.region_grad.get_index_space(), input_task_is,
+            transform, extent);
+        assert(runtime->is_index_partition_disjoint(ctx, ip));
+        assert(runtime->is_index_partition_complete(ctx, ip));
+        // Note we use replica.part to save how to partition the replica
+        // to compute input_grad_lps
+        replica.part = runtime->get_logical_partition(
+            ctx, replica.region_grad, ip);
+      }
+    } // if COMP_MODE_TRAINING
+  } else {
+    // when num_par_c == 1
     if (input_rect == part_rect) {
       input_lps[0] = inputs[0].part;
-      input_grad_lps[0] = inputs[0].part_grad;
+      if (model.config.computationMode == COMP_MODE_TRAINING) {
+        input_grad_lps[0] = inputs[0].part_grad;
+      }
     } else {
       Rect<NDIM> extent;
       for (int i = 0; i < NDIM; i++) {
@@ -256,8 +260,10 @@ void Linear::create_output_and_partition_with_dim(FFModel& model)
       assert(runtime->is_index_partition_complete(ctx, ip));
       input_lps[0] = runtime->get_logical_partition(
           ctx, inputs[0].region, ip);
-      input_grad_lps[0] = runtime->get_logical_partition(
-          ctx, inputs[0].region_grad, ip);
+      if (model.config.computationMode == COMP_MODE_TRAINING) {
+        input_grad_lps[0] = runtime->get_logical_partition(
+            ctx, inputs[0].region_grad, ip);
+      }
     }
   }
 }
@@ -1013,21 +1019,34 @@ bool Linear::measure_operator_cost(Simulator* sim,
   assert(kernel_ptr != NULL);
   float* bias_ptr = (float*)sim->allocate(output_c, DT_FLOAT);
   assert(bias_ptr != NULL);
-
-  auto forward = [&] {
+  std::function<void()> forward, backward;
+  forward = [&] {
     forward_kernel(m, input_ptr, output_ptr, kernel_ptr, bias_ptr,
         input_c, output_c, input_n);
   };
-  auto backward = [&] {
-    backward_kernel(m, input_ptr, input_ptr, output_ptr, output_ptr,
-        kernel_ptr, kernel_ptr, bias_ptr, input_c, output_c, input_n);
-  };
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    float* input_grad_ptr = (float*)sim->allocate(sub_input.get_volume(), DT_FLOAT);
+    float *output_grad_ptr = (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
+    float* kernel_grad_ptr = (float*)sim->allocate((size_t)output_c * input_c, DT_FLOAT);
+    float* bias_grad_ptr = (float*)sim->allocate(output_c, DT_FLOAT);
+    assert(bias_grad_ptr != NULL);
+    backward = [&] {
+      backward_kernel(m, input_ptr, input_grad_ptr, output_ptr, output_grad_ptr,
+          kernel_ptr, kernel_grad_ptr, bias_grad_ptr, input_c, output_c, input_n);
+    };
+  }
 
   inner_measure_operator_cost(sim, forward, backward, cost_metrics);
 
-  printf("[Measure Linear] name(%s) in(%d %d) out(%d %d) forward_time(%.4lf) backward_time(%.4lf)\n",
-         name, input_n, input_c, output_n, output_c,
-         cost_metrics.forward_time, cost_metrics.backward_time);
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    printf("[Measure Linear] name(%s) in(%d %d) out(%d %d) forward_time(%.4lf) backward_time(%.4lf)\n",
+           name, input_n, input_c, output_n, output_c,
+           cost_metrics.forward_time, cost_metrics.backward_time);
+  } else {
+    printf("[Measure Linear] name(%s) in(%d %d) out(%d %d) forward_time(%.4lf)\n",
+           name, input_n, input_c, output_n, output_c,
+           cost_metrics.forward_time);
+  }
   return true;
 }
 

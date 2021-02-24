@@ -143,7 +143,7 @@ OpMeta* ElementBinary::init_task(const Task* task,
                                  const std::vector<PhysicalRegion> &regions,
                                  Context ctx, Runtime* runtime)
 {
-  assert(regions.size() == 4 || regions.size() == 5);
+  assert(regions.size() == 3);
   assert(task->regions.size() == regions.size());
   ElementBinary* eb = (ElementBinary*) task->args;
   FFHandler handle = *((FFHandler*) task->local_args);
@@ -214,17 +214,17 @@ void ElementBinary::init(const FFModel& ff)
     RegionRequirement(outputs[0].part, 0/*projection id*/,
       WRITE_ONLY, EXCLUSIVE, outputs[0].region));
   launcher.add_field(2, FID_DATA);
-  launcher.add_region_requirement(
-    RegionRequirement(input_grad_lps[0], 0/*projection id*/,
-      WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
-  launcher.add_field(3, FID_DATA);
-  if (inputs[0].region_grad != inputs[1].region_grad) {
+  //launcher.add_region_requirement(
+  //  RegionRequirement(input_grad_lps[0], 0/*projection id*/,
+  //    WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
+  //launcher.add_field(3, FID_DATA);
+  //if (inputs[0].region_grad != inputs[1].region_grad) {
     // regions[4](I/O): input1_grad
-    launcher.add_region_requirement(
-      RegionRequirement(input_grad_lps[1], 0/*projection id*/,
-                        WRITE_ONLY, EXCLUSIVE, inputs[1].region_grad));
-    launcher.add_field(4, FID_DATA);
-  }
+  //  launcher.add_region_requirement(
+  //    RegionRequirement(input_grad_lps[1], 0/*projection id*/,
+  //                      WRITE_ONLY, EXCLUSIVE, inputs[1].region_grad));
+  //  launcher.add_field(4, FID_DATA);
+  //}
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
   switch (domain.get_dim()) {
@@ -682,28 +682,39 @@ bool ElementBinary::measure_operator_cost(Simulator* sim,
   sim->free_all();
   float* input0_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
   assert(input0_ptr != NULL);
-  float* input0_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
-  assert(input0_grad_ptr != NULL);
   float* input1_ptr = (float*)sim->allocate(sub_input1.get_volume(), DT_FLOAT);
   assert(input1_ptr != NULL);
-  float* input1_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
-  assert(input1_grad_ptr != NULL);
   float* output_ptr = (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
   assert(output_ptr != NULL);
 
-  auto forward = [&] {
+  std::function<void()> forward, backward;
+  forward = [&] {
     forward_kernel(m, input0_ptr, input1_ptr, output_ptr);
   };
-  auto backward = [&] {
-    backward_kernel(m, output_ptr, input0_ptr, input1_ptr, input0_grad_ptr, input1_grad_ptr);
-  };
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    float* input0_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
+    assert(input0_grad_ptr != NULL);
+    float* input1_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
+    assert(input1_grad_ptr != NULL);
+    float* output_grad_ptr = (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
+    assert(output_grad_ptr != NULL);
+    backward = [&] {
+      backward_kernel(m, output_grad_ptr, input0_ptr, input1_ptr, input0_grad_ptr, input1_grad_ptr);
+    };
+  }
 
   inner_measure_operator_cost(sim, forward, backward, cost_metrics);
 
-  printf("[Measure Elewise Binary] name(%s) num_elements(%zu) forward_time(%.4lf) backward_time(%.4lf)\n",
-      name, sub_output.get_volume(),
-      cost_metrics.forward_time,
-      cost_metrics.backward_time);
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    printf("[Measure Elewise Binary] name(%s) num_elements(%zu) forward_time(%.4lf) backward_time(%.4lf)\n",
+        name, sub_output.get_volume(),
+        cost_metrics.forward_time,
+        cost_metrics.backward_time);
+  } else {
+    printf("[Measure Elewise Binary] name(%s) num_elements(%zu) forward_time(%.4lf)\n",
+        name, sub_output.get_volume(),
+        cost_metrics.forward_time);
+  }
 
   return true;
 }

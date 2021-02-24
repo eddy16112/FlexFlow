@@ -544,22 +544,26 @@ bool BatchMatmul::measure_operator_cost(Simulator* sim,
     return false;
   }
 
-  int input0_r = sub_input0.adim[0];
-  int input0_c = sub_input0.adim[1];
-  int input1_r = sub_input1.adim[0];
-  int input1_c = sub_input1.adim[1];
-  int output_r = sub_output.adim[0];
-  int output_c = sub_output.adim[1];
+  int input0_c = sub_input0.adim[0];
+  int input0_r = sub_input0.adim[1];
+  int input1_c = sub_input1.adim[0];
+  int input1_r = sub_input1.adim[1];
+  int output_c = sub_output.adim[0];
+  int output_r = sub_output.adim[1];
 
-  assert (input0_r == input1_c);
-  assert (input0_c == output_c);
-  assert (input1_r == output_r);
+  assert (input0_c == input1_r);
+  assert (input0_r == output_r);
+  assert (input1_c == output_c);
 
   assert (sub_input0.adim[2] == sub_input1.adim[2]);
   assert (sub_input1.adim[2] == sub_output.adim[2]);
-
-  int batch = sub_input0.adim[2];
-
+  int batch = 1;
+  assert(sub_input0.numDim == sub_input1.numDim);
+  for (int i = 2; i < sub_input0.numDim; i++) {
+    assert(sub_input0.adim[i] == sub_input1.adim[i]);
+    assert(sub_input0.adim[i] == sub_output.adim[i]);
+    batch *= sub_input0.adim[i];
+  }
 
   BatchMatmulMeta *meta = sim->batch_matmul_meta;
 
@@ -567,40 +571,51 @@ bool BatchMatmul::measure_operator_cost(Simulator* sim,
   sim->free_all();
   float *a_ptr = (float *)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
   assert (a_ptr != NULL);
-  float *a_grad_ptr = (float *)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
-  assert (a_grad_ptr != NULL);
   float *b_ptr = (float *)sim->allocate(sub_input1.get_volume(), DT_FLOAT);
   assert (b_ptr != NULL);
-  float *b_grad_ptr = (float *)sim->allocate(sub_input1.get_volume(), DT_FLOAT);
-  assert (b_grad_ptr != NULL);
   float *c_ptr = NULL;
-  float *c_grad_ptr = NULL;
   float *out_ptr = (float *)sim->allocate(sub_output.get_volume(), DT_FLOAT);
   assert (out_ptr != NULL);
-  float *out_grad_ptr = (float *)sim->allocate(sub_output.get_volume(), DT_FLOAT);
-  assert (out_grad_ptr != NULL);
 
-  int m = input0_r;
-  int n = input1_c;
+  int m = input1_c;
+  int n = input0_r;
   int k = input0_c;
 
-  auto forward = [&] {
+  std::function<void()> forward, backward;
+  forward = [&] {
     forward_kernel(meta, out_ptr, a_ptr, b_ptr, c_ptr, m, n, k, batch);
   };
-  auto backward = [&] {
-    backward_kernel(meta, out_ptr, out_grad_ptr, a_ptr, a_grad_ptr, b_ptr, b_grad_ptr, c_grad_ptr, m, n, k, batch);
-  };
+
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    float *a_grad_ptr = (float *)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
+    float *b_grad_ptr = (float *)sim->allocate(sub_input1.get_volume(), DT_FLOAT);
+    float *c_grad_ptr = NULL;
+    float *out_grad_ptr = (float *)sim->allocate(sub_output.get_volume(), DT_FLOAT);
+    assert (out_grad_ptr != NULL);
+
+    backward = [&] {
+      backward_kernel(meta, out_ptr, out_grad_ptr, a_ptr, a_grad_ptr, b_ptr, b_grad_ptr, c_grad_ptr, m, n, k, batch);
+    };
+  }
 
   inner_measure_operator_cost(sim, forward, backward, cost_metrics);
 
-  printf("[Measure BatchMatmul] name(%s) adim(%d %d %d) bdim(%d %d %d) odim(%d %d %d) forward_time(%.4lf) backward_time(%.4lf)\n",
-      name,
-      batch, input0_r, input0_c,
-      batch, input1_r, input1_c,
-      batch, output_r, output_c,
-      cost_metrics.forward_time,
-      cost_metrics.backward_time
-  );
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    printf("[Measure BatchMatmul] name(%s) adim(%d %d %d) bdim(%d %d %d) odim(%d %d %d) forward_time(%.4lf) backward_time(%.4lf)\n",
+        name,
+        batch, input0_r, input0_c,
+        batch, input1_r, input1_c,
+        batch, output_r, output_c,
+        cost_metrics.forward_time,
+        cost_metrics.backward_time);
+  } else {
+    printf("[Measure BatchMatmul] name(%s) adim(%d %d %d) bdim(%d %d %d) odim(%d %d %d) forward_time(%.4lf)\n",
+        name,
+        batch, input0_r, input0_c,
+        batch, input1_r, input1_c,
+        batch, output_r, output_c,
+        cost_metrics.forward_time);
+  }
 
   return true;
 }
