@@ -291,13 +291,24 @@ OpMeta* Linear::init_task(const Task *task,
   return NULL;
 }
 
+bool Linear::use_cudnn_activation(ActiMode mode)
+{
+  switch (mode) {
+    case AC_MODE_RELU:
+    case AC_MODE_SIGMOID:
+    case AC_MODE_TANH:
+      return true;
+  }
+  return false;
+}
+
 template<int NDIM>
 OpMeta* Linear::init_task_with_dim(const Task *task,
                                    const std::vector<PhysicalRegion> &regions,
                                    Context ctx, Runtime *runtime)
 {
-  assert(regions.size() == 2);
-  assert(task->regions.size() == 2);
+  assert(regions.size() == task->regions.size());
+  assert(regions.size() == 2 || regions.size() == 3);
   const Linear* linear = (Linear*) task->args;
   FFHandler handle = *((const FFHandler*) task->local_args);
   //TensorAccessorR<float, 2> acc_input(
@@ -318,7 +329,7 @@ OpMeta* Linear::init_task_with_dim(const Task *task,
   LinearMeta* m = new LinearMeta(handle, batch_size);
   m->activation = linear->activation;
 
-  if (m->activation != AC_MODE_NONE) {
+  if (use_cudnn_activation(m->activation)) {
     cudnnActivationMode_t mode;
     switch (linear->activation) {
       case AC_MODE_RELU:
@@ -339,7 +350,17 @@ OpMeta* Linear::init_task_with_dim(const Task *task,
                                           batch_size, out_dim, 1, 1));
   }
 #ifdef FF_USE_NCCL
-  m->init_nccl_communicator(task, linear->ncclId);
+  CompMode comp_mode;
+  if (regions.size() == 2) {
+    comp_mode = COMP_MODE_INFERENCE;
+  } else if (regions.size() == 3) {
+    comp_mode = COMP_MODE_TRAINING;
+  } else {
+    assert(false);
+  }
+  if (comp_mode == COMP_MODE_TRAINING) {
+    m->init_nccl_communicator(task, linear->ncclId);
+  }
 #endif
   return m;
 }
@@ -393,11 +414,13 @@ void Linear::init_with_dim(const FFModel& ff)
   //     RegionRequirement(weights[1].part, 0/*projection id*/,
   //                       READ_ONLY, EXCLUSIVE, weights[1].region));
   // launcher.add_field(3, FID_DATA);
-  // Add inputs[0].region_grad to avoid Legion warning
-  //launcher.add_region_requirement(
-  //    RegionRequirement(input_grad_lps[0], 0/*projection id*/,
-  //                      WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
-  //launcher.add_field(2, FID_DATA);
+  if (ff.config.computationMode == COMP_MODE_TRAINING) {
+    // Add inputs[0].region_grad to avoid Legion warning
+    launcher.add_region_requirement(
+        RegionRequirement(input_grad_lps[0], 0/*projection id*/,
+            WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
+    launcher.add_field(2, FID_DATA);
+  }
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
   idx = 0;
@@ -428,10 +451,20 @@ void Linear::forward_kernel(const LinearMeta* m,
                           m->one_ptr, 1, &alpha,
                           output_ptr, out_dim));
   }
-  if (m->activation != AC_MODE_NONE) {
+  if (use_cudnn_activation(m->activation)) {
     checkCUDNN(cudnnActivationForward(m->handle.dnn, m->actiDesc,
         &alpha, m->outputTensor, output_ptr,
         &beta, m->outputTensor, output_ptr));
+  } else if (m->activation == AC_MODE_GELU) {
+    size_t elements = (size_t)out_dim * (size_t) batch_size;
+    constexpr float B = 0.7978845608028654f;   // sqrt(2.0/M_PI)
+    constexpr float C = 0.035677408136300125f; // 0.044715 * sqrt(2.0/M_PI)
+    gelu_forward_kernel<<<GET_BLOCKS(elements), CUDA_NUM_THREADS>>>(
+        elements, B, C, output_ptr);
+  } else if (m->activation == AC_MODE_NONE) {
+    // Do nothing
+  } else {
+    assert(false && "Unsupported activation for Linear");
   }
 }
 
@@ -991,7 +1024,7 @@ bool Linear::measure_operator_cost(Simulator* sim,
   int output_n = sub_output.get_volume() / output_c;
   LinearMeta* m = sim->linear_meta;
   m->activation = activation;
-  if (activation != AC_MODE_NONE) {
+  if (use_cudnn_activation(m->activation)) {
     cudnnActivationMode_t mode;
     switch (activation) {
       case AC_MODE_RELU:
