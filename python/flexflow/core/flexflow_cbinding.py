@@ -396,22 +396,6 @@ class FFConfig(object):
   def epochs(self):
     return ffc.flexflow_config_get_epochs(self.handle)
 
-  def get_batch_size(self):
-    warnings.warn("FFConfig getters are deprecated. Use properties instead.", DeprecationWarning)
-    return ffc.flexflow_config_get_batch_size(self.handle)
-
-  def get_workers_per_node(self):
-    warnings.warn("FFConfig getters are deprecated. Use properties instead.", DeprecationWarning)
-    return ffc.flexflow_config_get_workers_per_node(self.handle)
-
-  def get_num_nodes(self):
-    warnings.warn("FFConfig getters are deprecated. Use properties instead.", DeprecationWarning)
-    return ffc.flexflow_config_get_num_nodes(self.handle)
-
-  def get_epochs(self):
-    warnings.warn("FFConfig getters are deprecated. Use properties instead.", DeprecationWarning)
-    return ffc.flexflow_config_get_epochs(self.handle)
-
   def get_current_time(self):
     return ffc.flexflow_get_current_time(self.handle)
 
@@ -895,7 +879,7 @@ class FFModel(object):
     kernel_init_handle = self.__get_initializer_handle(kernel_initializer)
     bias_init_handle = self.__get_initializer_handle(bias_initializer)
     c_name = get_c_name(name)
-    handle = ffc.flexflow_model_add_conv2d(self.handle, input.handle, out_channels, kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w, groups, c_activation, use_bias, shared_op_handle, kernel_init_handle, bias_init_handle, c_name)
+    handle = ffc.flexflow_model_add_conv2d(self.handle, input.handle, out_channels, kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w, c_activation, groups, use_bias, shared_op_handle, kernel_init_handle, bias_init_handle, c_name)
     self.add_layer(OpType.CONV2D, name)
     return Tensor(handle, owner_op_type=OpType.CONV2D)
 
@@ -1587,14 +1571,6 @@ class FFModel(object):
 
   optimizer = property(fset=set_optimizer)
 
-  def set_sgd_optimizer(self, optimizer):
-    warnings.warn("optimizer setters are deprecated. Use properties instead.", DeprecationWarning)
-    ffc.flexflow_model_set_sgd_optimizer(self.handle, optimizer.handle)
-
-  def set_adam_optimizer(self, optimizer):
-    warnings.warn("optimizer setters are deprecated. Use properties instead.", DeprecationWarning)
-    ffc.flexflow_model_set_adam_optimizer(self.handle, optimizer.handle)
-
   def print_layers(self, id=-1):
     ffc.flexflow_model_print_layers(self.handle, id)
 
@@ -1615,11 +1591,6 @@ class FFModel(object):
 
   @property
   def label_tensor(self):
-    handle = ffc.flexflow_model_get_label_tensor(self.handle)
-    return Tensor(handle, deallocate=False)
-
-  def get_label_tensor(self):
-    warnings.warn("FFModel label_tensor getter is deprecated. Use property instead.", DeprecationWarning)
     handle = ffc.flexflow_model_get_label_tensor(self.handle)
     return Tensor(handle, deallocate=False)
 
