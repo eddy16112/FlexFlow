@@ -37,7 +37,7 @@ class BaseModel(object):
   def __init__(self, name):
     self._ffconfig = ff.FFConfig()
     self._ffconfig.parse_args()
-    print("Python API batchSize(%d) workersPerNodes(%d) numNodes(%d)" %(self._ffconfig.get_batch_size(), self._ffconfig.get_workers_per_node(), self._ffconfig.get_num_nodes()))
+    print("Python API batchSize(%d) workersPerNodes(%d) numNodes(%d)" %(self._ffconfig.batch_size, self._ffconfig.get_workers_per_node(), self._ffconfig.get_num_nodes()))
     self._ffmodel = None
 
     self._name = name
@@ -58,6 +58,7 @@ class BaseModel(object):
     self._loss = None
     self._metrics = []
     self._label_type = ff.DataType.DT_FLOAT
+    self._layer_inited = False
 
     global tracing_id
     self.__tracing_id = tracing_id
@@ -133,6 +134,7 @@ class BaseModel(object):
               loss_weights=None,
               weighted_metrics=None,
               run_eagerly=None,
+              comp_mode=None,
               **kwargs):
     if loss_weights != None:
       assert 0, "loss_weights is not supported"
@@ -186,7 +188,7 @@ class BaseModel(object):
     metrics_type = []
     for metric in self._metrics:
       metrics_type.append(metric.type)
-    self._ffmodel.compile(optimizer=self._ffoptimizer.ffhandle, loss_type=self._loss.type, metrics=metrics_type)
+    self._ffmodel.compile(optimizer=self._ffoptimizer.ffhandle, loss_type=self._loss.type, metrics=metrics_type, comp_mode=comp_mode)
     self._create_label_tensor()
     fflogger.debug("%s, %s, %s, %s" %( str(self._input_tensors[0]), str(self._output_tensor), str(self._input_tensors[0].ffhandle), str(self._output_tensor.ffhandle)))
 
@@ -212,7 +214,7 @@ class BaseModel(object):
           workers=1,
           use_multiprocessing=False):
     if batch_size != None:
-      assert self._ffconfig.get_batch_size() == batch_size, "batch size is not correct use -b to set it"
+      assert self._ffconfig.batch_size == batch_size, "batch size is not correct use -b to set it"
     if validation_split != 0.0:
       assert 0, "validation_split is not supported"
     if validation_data != None:
@@ -248,7 +250,9 @@ class BaseModel(object):
     label_tensor = y
     self._verify_tensors(input_tensors, label_tensor)
     self._create_data_loaders(input_tensors, label_tensor)
-    self._ffmodel.init_layers()
+    if self._layer_inited == False:
+      self._ffmodel.init_layers()
+      self._layer_inited = True
     self._train(epochs, callbacks, eval=False)
 
   def evaluate(self,
@@ -264,7 +268,7 @@ class BaseModel(object):
                use_multiprocessing=False,
                return_dict=False):
     if batch_size != None:
-      assert self._ffconfig.get_batch_size() == batch_size, "batch size is not correct use -b to set it"
+      assert self._ffconfig.batch_size == batch_size, "batch size is not correct use -b to set it"
     assert self._output_tensor.ffhandle != None, "tensor is not init"
     if (isinstance(x, list) == False):
       input_tensors = [x]
@@ -273,6 +277,9 @@ class BaseModel(object):
     label_tensor = y
     self._verify_tensors(input_tensors, label_tensor)
     self._create_data_loaders(input_tensors, label_tensor)
+    if self._layer_inited == False:
+      self._ffmodel.init_layers()
+      self._layer_inited = True
     self._train(1, callbacks, eval=True)
 
   def _create_input_tensor(self, idx):
@@ -280,13 +287,13 @@ class BaseModel(object):
     self._input_tensors[idx].create_ff_tensor(self._ffmodel)
 
   def _create_label_tensor(self):
-    label_ffhandle = self._ffmodel.get_label_tensor()
-    self._label_tensor = Tensor(ffmodel=self._ffmodel, batch_shape=(self._ffconfig.get_batch_size(), 1), name="", dtype=self._label_type, ffhandle=label_ffhandle)
+    label_ffhandle = self._ffmodel.label_tensor
+    self._label_tensor = Tensor(ffmodel=self._ffmodel, batch_shape=(self._ffconfig.batch_size, 1), name="", dtype=self._label_type, ffhandle=label_ffhandle)
 
   def _create_input_tensors(self):
     idx = 0
     for input_tensor in self._input_tensors:
-      input_tensor.set_batch_size(self._ffconfig.get_batch_size())
+      input_tensor.set_batch_size(self._ffconfig.batch_size)
       self._create_input_tensor(idx)
       idx += 1
 
@@ -376,6 +383,7 @@ class BaseModel(object):
     ts_start = self._ffconfig.get_current_time()
     epoch = 0
     epoch_flag = True
+    self.__tracing_id += 1
     while (epoch < epochs) and (epoch_flag == True):
       if callbacks != None:
         for callback in callbacks:
@@ -385,7 +393,7 @@ class BaseModel(object):
         dataloader.reset()
       self._label_dataloader.reset()
       self._ffmodel.reset_metrics()
-      iterations = self._num_samples / self._ffconfig.get_batch_size()
+      iterations = self._num_samples / self._ffconfig.batch_size
 
       for iter in range(0, int(iterations)):
         if callbacks != None:
@@ -395,8 +403,8 @@ class BaseModel(object):
         for dataloader in self._input_dataloaders:
           dataloader.next_batch(self._ffmodel)
         self._label_dataloader.next_batch(self._ffmodel)
-        if (epoch > 0):
-          self._ffconfig.begin_trace(self.__tracing_id)
+
+        self._ffconfig.begin_trace(self.__tracing_id)
         self._ffmodel.forward()
         # for layer in self._ops:
         #   layer.ffhandle.forward(self._ffmodel)
@@ -406,8 +414,7 @@ class BaseModel(object):
           self._ffmodel.update()
         else:
           self._ffmodel.compute_metrics()
-        if (epoch > 0):
-          self._ffconfig.end_trace(self.__tracing_id)
+        self._ffconfig.end_trace(self.__tracing_id)
 
         if callbacks != None:
           for callback in callbacks:

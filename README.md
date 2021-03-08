@@ -32,7 +32,7 @@ if __name__ == "__main__":
   top_level_task()
 ```
 
-During model compilation (i.e., `model.compile` in Keras), FlexFlow can [autotune](SEARCH.md) the parallelization performance by searching for efficient strategies on the given parallel machine. Next, `model.fit` performs DNN training on all available GPUs (potentially across multiple nodes) using the best discovered strategy. As a result, users don't need to manually design and optimize the device assignments.
+During model compilation (i.e., `model.compile` in Keras), FlexFlow can [autotune](https://flexflow.ai/search) the parallelization performance by searching for efficient strategies on the given parallel machine. Next, `model.fit` performs DNN training on all available GPUs (potentially across multiple nodes) using the best discovered strategy. As a result, users don't need to manually design and optimize the device assignments.
 
 **More FlexFlow Keras examples**: see the [keras examples folder](https://github.com/flexflow/FlexFlow/tree/master/examples/python/keras).
 
@@ -96,8 +96,9 @@ Performance auto-tuning flags:
 * `--search-alpha` or `--alpha`: a hyper-parameter for the search procedure (default: 0.05)
 * `--export-strategy` or `--export`: path to export the best discovered strategy (default: None)
 * `--import-strategy` or `--import`: path to import a previous saved strategy (default: None)
-
-For performance tuning related flags: see [performance autotuning](SEARCH.md).
+* `--enable-parameter-parallel`: allow FlexFlow to explore parameter parallelism for performance auto-tuning. (By default FlexFlow only considers data and model parallelism.)
+* `--enable-attribute-parallel`: allow FlexFlow to explore attribute parallelism for performance auto-tuning. (By default FlexFlow only considers data and model parallelism.)
+For performance tuning related flags: see [performance autotuning](https://flexflow.ai/search).
 
 ## Contributing
 Please let us know if you encounter any bugs or have any suggestions by [submitting an issue](https://github.com/flexflow/flexflow/issues).

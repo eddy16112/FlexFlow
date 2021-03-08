@@ -17,15 +17,21 @@
 #define _FLEXFLOW_CONFIG_H_
 #include <cstring>
 #include "legion.h"
+#include "ffconst.h"
 #include <cudnn.h>
 #include <cublas_v2.h>
+#ifdef FF_USE_NCCL
+#include <nccl.h>
+#endif
 
 // ========================================================
 // Define Runtime Constants
 // ========================================================
 #define MAX_NUM_INPUTS 256
-#define MAX_NUM_WEIGHTS 4
+#define MAX_NUM_WEIGHTS 64
 #define MAX_NUM_OUTPUTS 256
+#define MAX_NUM_FUSED_OPERATORS 64
+#define MAX_NUM_FUSED_TENSORS 64
 #define MAX_NUM_WORKERS 1024
 #define MAX_FILENAME 200
 #define MAX_OPNAME 64
@@ -43,10 +49,26 @@ struct ParallelConfig {
     GPU = 0,
     CPU = 1,
   };
+  bool operator==(const ParallelConfig &rhs) const
+  {
+    if (nDims != rhs.nDims) return false;
+    if (device_type != rhs.device_type) return false;
+    for (int i = 0; i < nDims; i++)
+      if (dim[i] != rhs.dim[i])
+        return false;
+    for (int i = 0; i < num_parts(); i++)
+      if (device_ids[i] != rhs.device_ids[i])
+        return false;
+    return true;
+  }
   int num_parts() const;
+  bool is_data_parallel() const;
   DeviceType device_type;
   int nDims, dim[MAX_TENSOR_DIM];
   int device_ids[MAX_NUM_WORKERS];
+#ifdef FF_USE_NCCL
+  ncclComm_t nccl_comms[MAX_NUM_WORKERS];
+#endif
 };
 
 struct FFHandler {
@@ -54,6 +76,16 @@ struct FFHandler {
   cublasHandle_t blas;
   void *workSpace;
   size_t workSpaceSize;
+  bool allowTensorOpMathConversion;
+#ifdef FF_USE_NCCL
+  ncclComm_t ncclComm;
+#endif
+};
+
+struct FFInitInfo {
+  size_t workSpaceSize;
+  bool allowTensorOpMathConversion;
+  //int myRank, allRanks;
 };
 
 bool load_strategies_from_file(const std::string& filename,
@@ -66,11 +98,16 @@ class FFConfig {
 public:
   enum PreservedIDs{
     InvalidID = 0,
-    DataParallelism_1D = 1,
-    DataParallelism_2D = 2,
-    DataParallelism_3D = 3,
-    DataParallelism_4D = 4,
-    DataParallelism_5D = 5,
+    DataParallelism_GPU_1D = 1,
+    DataParallelism_GPU_2D = 2,
+    DataParallelism_GPU_3D = 3,
+    DataParallelism_GPU_4D = 4,
+    DataParallelism_GPU_5D = 5,
+    DataParallelism_CPU_1D = 11,
+    DataParallelism_CPU_2D = 12,
+    DataParallelism_CPU_3D = 13,
+    DataParallelism_CPU_4D = 14,
+    DataParallelism_CPU_5D = 15,
   };
 
   FFConfig();
@@ -84,21 +121,25 @@ public:
 public:
   int epochs, batchSize, iterations, printFreq;
   //int inputHeight, inputWidth;
-  int numNodes, loadersPerNode, workersPerNode;
+  int numNodes, cpusPerNode, workersPerNode;
   float learningRate, weightDecay;
   size_t workSpaceSize;
   Context lg_ctx;
   Runtime* lg_hlr;
   FieldSpace field_space;
-  bool syntheticInput, profiling;
+  bool syntheticInput, profiling, perform_fusion;
   size_t simulator_work_space_size;
   size_t search_budget;
   float search_alpha;
   bool search_overlap_backward_update;
+  CompMode computationMode;
+  std::string export_strategy_task_graph_file;
   //Control parallelizable dimensions
   bool enable_sample_parallel;
   bool enable_parameter_parallel;
   bool enable_attribute_parallel;
+  //Control Tensor Op Math Conversion
+  bool allow_tensor_op_math_conversion;
   std::string dataset_path;
   std::string import_strategy_file;
   std::string export_strategy_file;

@@ -6,6 +6,7 @@ enum ActiMode {
   AC_MODE_RELU = 11,
   AC_MODE_SIGMOID = 12,
   AC_MODE_TANH = 13,
+  AC_MODE_GELU = 14,
 };
 
 enum AggrMode {
@@ -25,6 +26,7 @@ enum DataType {
   DT_INT32 = 42,
   DT_INT64 = 43,
   DT_BOOLEAN = 44,
+  DT_NONE = 49,
 };
 
 enum LossType {
@@ -32,6 +34,17 @@ enum LossType {
   LOSS_SPARSE_CATEGORICAL_CROSSENTROPY = 51,
   LOSS_MEAN_SQUARED_ERROR_AVG_REDUCE = 52,
   LOSS_MEAN_SQUARED_ERROR_SUM_REDUCE = 53,
+};
+
+enum CompMode {
+  COMP_MODE_TRAINING = 70,
+  COMP_MODE_INFERENCE = 71,
+};
+
+enum ParameterSyncType {
+  NONE = 80,
+  PS = 81,
+  NCCL = 82,
 };
 
 enum MetricsType {
@@ -42,7 +55,6 @@ enum MetricsType {
   METRICS_ROOT_MEAN_SQUARED_ERROR = 1016,
   METRICS_MEAN_ABSOLUTE_ERROR = 1032,
 };
-
 
 // This is consistent with TASO's OpType
 // https://github.com/jiazhihao/TASO/blob/master/include/taso/ops.h#L75-L138
@@ -111,7 +123,9 @@ enum OperatorType {
   OP_SLICE, //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Slice
   OP_RESIZE, //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Resize
   OP_PRELU, //https://github.com/onnx/onnx/blob/master/docs/Operators.md#PRelu
+  OP_GELU,
   OP_MULTIHEAD_ATTENTION,
+  OP_FUSED, // Fused operator type for internal fusion optimizations
 };
 
 #endif // _FLEXFLOW_CONST_H_

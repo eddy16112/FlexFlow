@@ -1,27 +1,31 @@
 from flexflow.core import *
 from flexflow.keras.datasets import cifar10
-from flexflow.onnx.model import ONNXModel
+from flexflow.onnx.model import ONNXModel, ONNXModelKeras
+import argparse
 
 from accuracy import ModelAccuracy
 
-def top_level_task():
+def top_level_task(test_type=1):
   ffconfig = FFConfig()
   alexnetconfig = NetConfig()
   print(alexnetconfig.dataset_path)
-  ffconfig.parse_args()
-  print("Python API batchSize(%d) workersPerNodes(%d) numNodes(%d)" %(ffconfig.get_batch_size(), ffconfig.get_workers_per_node(), ffconfig.get_num_nodes()))
+  print("Python API batchSize(%d) workersPerNodes(%d) numNodes(%d)" %(ffconfig.batch_size, ffconfig.workers_per_node, ffconfig.num_nodes))
   ffmodel = FFModel(ffconfig)
   
-  dims_input = [ffconfig.get_batch_size(), 3, 32, 32]
+  dims_input = [ffconfig.batch_size, 3, 32, 32]
   input = ffmodel.create_tensor(dims_input, DataType.DT_FLOAT)
 
-  onnx_model = ONNXModel("cifar10_cnn.onnx")
-  t = onnx_model.apply(ffmodel, {"input.1": input})
+  if test_type == 1:
+    onnx_model = ONNXModel("cifar10_cnn_pt.onnx")
+    t = onnx_model.apply(ffmodel, {"input.1": input})
+  else:
+    onnx_model = ONNXModelKeras("cifar10_cnn_keras.onnx", ffconfig, ffmodel)
+    t = onnx_model.apply(ffmodel, {"input_1": input})
 
   ffoptimizer = SGDOptimizer(ffmodel, 0.01)
-  ffmodel.set_sgd_optimizer(ffoptimizer)
+  ffmodel.optimizer = ffoptimizer
   ffmodel.compile(loss_type=LossType.LOSS_SPARSE_CATEGORICAL_CROSSENTROPY, metrics=[MetricsType.METRICS_ACCURACY, MetricsType.METRICS_SPARSE_CATEGORICAL_CROSSENTROPY])
-  label = ffmodel.get_label_tensor()
+  label = ffmodel.label_tensor
   
   num_samples = 10000
   
@@ -54,7 +58,7 @@ def top_level_task():
 
   ffmodel.init_layers()
 
-  epochs = ffconfig.get_epochs()
+  epochs = ffconfig.epochs
 
   ts_start = ffconfig.get_current_time()
   
@@ -71,4 +75,8 @@ def top_level_task():
 
 if __name__ == "__main__":
   print("cifar10 cnn onnx")
-  top_level_task()
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--test_type')
+  args, unknown = parser.parse_known_args()
+  test_type = args.test_type
+  top_level_task(test_type)

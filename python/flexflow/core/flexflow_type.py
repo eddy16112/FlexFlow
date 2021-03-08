@@ -5,6 +5,7 @@ class ActiMode(Enum):
   AC_MODE_RELU = 11
   AC_MODE_SIGMOID = 12
   AC_MODE_TANH = 13
+  AC_MODE_GELU = 14
 
 class AggrMode(Enum):
   AGGR_MODE_NONE = 20
@@ -28,6 +29,15 @@ class LossType(Enum):
   LOSS_MEAN_SQUARED_ERROR_AVG_REDUCE = 52
   LOSS_MEAN_SQUARED_ERROR_SUM_REDUCE = 53
 
+class CompMode(Enum):
+  TRAINING = 70
+  INFERENCE = 71
+  
+class ParameterSyncType(Enum):
+  NONE = 80
+  PS = 81
+  NCCL = 82
+  
 class MetricsType(Enum):
   METRICS_ACCURACY = 1001
   METRICS_CATEGORICAL_CROSSENTROPY = 1002
@@ -64,6 +74,7 @@ class OpType(Enum):
   INPUT = 2050
   OUTPUT = 2051
   MULTIHEAD_ATTENTION = 2060
+  GETITEM = 2070
 
 def enum_to_int(enum, enum_item):
   for item in enum:
@@ -81,3 +92,14 @@ def int_to_enum(enum, value):
       return item
 
   assert 0, "unknow enum value " + str(value) + " " + str(enum)
+  
+def enum_to_str(enum, enum_item):
+  name = enum(enum_item).name
+  return name
+  
+def str_to_enum(enum, value):
+  for item in enum:
+    if (item.name == value):
+      return item
+
+  assert 0, "unknow enum value " + value + " " + str(enum)

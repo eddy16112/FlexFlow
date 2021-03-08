@@ -16,43 +16,57 @@
 #include "model.h"
 #include "cuda_helper.h"
 
-Tensor FFModel::add(const Tensor& in1,
-                    const Tensor& in2)
+Tensor FFModel::binary(OperatorType op,
+                       const Tensor& in1,
+                       const Tensor& in2,
+                       char const *name)
 {
-  ElementBinary *ele = new ElementBinary(*this, OP_EW_ADD, in1, in2);
+  ElementBinary *ele = new ElementBinary(*this, op, in1, in2, name);
   layers.push_back(ele);
   return ele->outputs[0];
+}
+
+Tensor FFModel::add(const Tensor& in1,
+                    const Tensor& in2,
+                    char const *name)
+{
+  return this->binary(OP_EW_ADD, in1, in2, name);
 }
 
 Tensor FFModel::subtract(const Tensor& in1,
-                         const Tensor& in2)
+                         const Tensor& in2,
+                         char const *name)
 {
-  ElementBinary *ele = new ElementBinary(*this, OP_EW_SUB, in1, in2);
-  layers.push_back(ele);
-  return ele->outputs[0];
+  return this->binary(OP_EW_SUB, in1, in2, name);
 }
 
 Tensor FFModel::multiply(const Tensor& in1,
-                         const Tensor& in2)
+                         const Tensor& in2,
+                         char const *name)
 {
-  ElementBinary *ele = new ElementBinary(*this, OP_EW_MUL, in1, in2);
-  layers.push_back(ele);
-  return ele->outputs[0];
+  return this->binary(OP_EW_MUL, in1, in2, name);
 }
 
 Tensor FFModel::divide(const Tensor& in1,
-                       const Tensor& in2)
+                       const Tensor& in2,
+                       char const *name)
 {
-  ElementBinary *ele = new ElementBinary(*this, OP_EW_DIV, in1, in2);
-  layers.push_back(ele);
-  return ele->outputs[0];
+  return this->binary(OP_EW_DIV, in1, in2, name);
 }
 
 ElementBinary::ElementBinary(FFModel& model,
                              OperatorType _op_type,
                              const Tensor& in1,
-                             const Tensor& in2)
-: Op(model, _op_type, "ElementBinary_"+std::to_string(_op_type), in1, in2), op_type(_op_type)
+                             const Tensor& in2,
+                             const char* name)
+: Op(
+    model,
+    _op_type,
+    name,
+    in1,
+    in2
+  ),
+  op_type(_op_type)
 {
   //TODO: implement broadcast op
   numOutputs = 1;
@@ -128,12 +142,13 @@ OpMeta* ElementBinary::init_task(const Task* task,
                                  const std::vector<PhysicalRegion> &regions,
                                  Context ctx, Runtime* runtime)
 {
-  assert(regions.size() == 4 || regions.size() == 5);
+  assert(regions.size() == 3);
   assert(task->regions.size() == regions.size());
   ElementBinary* eb = (ElementBinary*) task->args;
   FFHandler handle = *((FFHandler*) task->local_args);
   ElementBinaryMeta* m = new ElementBinaryMeta(handle);
   m->op_type = eb->op_type;
+  m->profiling = eb->profiling;
   cudnnOpTensorOp_t mode;
   switch (eb->op_type) {
     case OP_EW_ADD:
@@ -189,27 +204,27 @@ void ElementBinary::init(const FFModel& ff)
                          FFConfig::get_hash_id(std::string(name)));
   launcher.add_region_requirement(
     RegionRequirement(input_lps[0], 0/*projection id*/,
-      READ_ONLY, EXCLUSIVE, inputs[0].region));
+      READ_WRITE, EXCLUSIVE, inputs[0].region));
   launcher.add_field(0, FID_DATA);
   launcher.add_region_requirement(
     RegionRequirement(input_lps[1], 0/*projection id*/,
-      READ_ONLY, EXCLUSIVE, inputs[1].region));
+      READ_WRITE, EXCLUSIVE, inputs[1].region));
   launcher.add_field(1, FID_DATA);
   launcher.add_region_requirement(
     RegionRequirement(outputs[0].part, 0/*projection id*/,
       WRITE_ONLY, EXCLUSIVE, outputs[0].region));
   launcher.add_field(2, FID_DATA);
-  launcher.add_region_requirement(
-    RegionRequirement(input_grad_lps[0], 0/*projection id*/,
-      WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
-  launcher.add_field(3, FID_DATA);
-  if (inputs[0].region_grad != inputs[1].region_grad) {
+  //launcher.add_region_requirement(
+  //  RegionRequirement(input_grad_lps[0], 0/*projection id*/,
+  //    WRITE_ONLY, EXCLUSIVE, inputs[0].region_grad));
+  //launcher.add_field(3, FID_DATA);
+  //if (inputs[0].region_grad != inputs[1].region_grad) {
     // regions[4](I/O): input1_grad
-    launcher.add_region_requirement(
-      RegionRequirement(input_grad_lps[1], 0/*projection id*/,
-                        WRITE_ONLY, EXCLUSIVE, inputs[1].region_grad));
-    launcher.add_field(4, FID_DATA);
-  }
+  //  launcher.add_region_requirement(
+  //    RegionRequirement(input_grad_lps[1], 0/*projection id*/,
+  //                      WRITE_ONLY, EXCLUSIVE, inputs[1].region_grad));
+  //  launcher.add_field(4, FID_DATA);
+  //}
   FutureMap fm = runtime->execute_index_space(ctx, launcher);
   fm.wait_all_results();
   switch (domain.get_dim()) {
@@ -277,10 +292,11 @@ void elewise_binary_forward_kernel(coord_t volume,
     }
 }
 
+/*static*/
 void ElementBinary::forward_kernel(const ElementBinaryMeta* m,
                                    const float* in1_ptr,
                                    const float* in2_ptr,
-                                   float* out_ptr) const
+                                   float* out_ptr)
 {
   float alpha1 = 1.0f, alpha2 = 1.0f, beta = 0.0f;
   switch (m->op_type) {
@@ -311,7 +327,7 @@ void ElementBinary::forward_task(const Task* task,
 {
   assert(regions.size() == 3);
   assert(task->regions.size() == 3);
-  const ElementBinary* ele = (const ElementBinary*) task->args;
+  //const ElementBinary* ele = (const ElementBinary*) task->args;
   const ElementBinaryMeta* m = *((ElementBinaryMeta**) task->local_args);
   Domain in1_domain = runtime->get_index_space_domain(
     ctx, task->regions[0].region.get_index_space());
@@ -328,15 +344,48 @@ void ElementBinary::forward_task(const Task* task,
     regions[1], task->regions[1], FID_DATA, ctx, runtime);
   float* out_ptr = helperGetTensorPointerWO<float>(
     regions[2], task->regions[2], FID_DATA, ctx, runtime);
+
+  cudaEvent_t t_start, t_end;
+  if (m->profiling) {
+    cudaEventCreate(&t_start);
+    cudaEventCreate(&t_end);
+    cudaEventRecord(t_start);
+  }
+
 #ifndef DISABLE_LEGION_CUDA_HIJACK
   cudaStream_t stream;
   checkCUDA(cudaStreamCreate(&stream));
   checkCUDA(cublasSetStream(m->handle.blas, stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
-  ele->forward_kernel(m, in1_ptr, in2_ptr, out_ptr);
-  //elewise_binary_forward_kernel<<<GET_BLOCKS(out_domain.get_volume()), CUDA_NUM_THREADS>>>(
-  //  out_domain.get_volume(), alpha, beta, ele->op_type, in1_ptr, in2_ptr, out_ptr);
+  forward_kernel(m, in1_ptr, in2_ptr, out_ptr);
+
+  if (m->profiling) {
+    cudaEventRecord(t_end);
+    checkCUDA(cudaEventSynchronize(t_end));
+    float elapsed = 0;
+    checkCUDA(cudaEventElapsedTime(&elapsed, t_start, t_end));
+    cudaEventDestroy(t_start);
+    cudaEventDestroy(t_end);
+    char const *opName;
+    switch (m->op_type) {
+      case OP_EW_ADD:
+        opName = "Add";
+        break;
+      case OP_EW_SUB:
+        opName = "Sub";
+        break;
+      case OP_EW_MUL:
+        opName = "Mul";
+        break;
+      case OP_EW_DIV:
+        opName = "Div";
+        break;
+      default:
+        assert(false);
+    }
+    printf("[%s] forward time (CF) = %.2fms\n", opName, elapsed);
+  }
 }
 
 void ElementBinary::forward(const FFModel& ff)
@@ -363,7 +412,7 @@ void ElementBinary::forward(const FFModel& ff)
       assert(false);
   }
   IndexLauncher launcher(ELEMENTBINARY_FWD_TASK_ID, task_is,
-                         TaskArgument(this, sizeof(ElementBinary)), argmap,
+                         TaskArgument(NULL, 0), argmap,
                          Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
                          FFConfig::get_hash_id(std::string(name)));
   launcher.add_region_requirement(
@@ -425,12 +474,13 @@ void elewise_binary_backward_kernel(coord_t volume,
   }
 }
 
+/*static*/
 void ElementBinary::backward_kernel(const ElementBinaryMeta* m,
                                     const float* out_grad_ptr,
                                     const float* in1_ptr,
                                     const float* in2_ptr,
-                                    float* in1_grad_ptr, 
-                                    float* in2_grad_ptr) const
+                                    float* in1_grad_ptr,
+                                    float* in2_grad_ptr)
 {
   float alpha1 = 1.0f, alpha2 = 1.0f, beta = 1.0f;
   switch (m->op_type) {
@@ -483,7 +533,7 @@ void ElementBinary::backward_task(const Task *task,
                             const std::vector<PhysicalRegion> &regions,
                             Context ctx, Runtime* runtime)
 {
-  const ElementBinary* ele = (const ElementBinary*) task->args;
+  //const ElementBinary* ele = (const ElementBinary*) task->args;
   const ElementBinaryMeta* m = *((ElementBinaryMeta**) task->local_args);
   assert(regions.size() == 5 || regions.size() == 4);
   assert(task->regions.size() == regions.size());
@@ -523,7 +573,7 @@ void ElementBinary::backward_task(const Task *task,
   checkCUDA(cublasSetStream(m->handle.blas, stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
-  ele->backward_kernel(m, out_grad_ptr, in1_ptr, in2_ptr, in1_grad_ptr, in2_grad_ptr);
+  backward_kernel(m, out_grad_ptr, in1_ptr, in2_ptr, in1_grad_ptr, in2_grad_ptr);
   //elewise_binary_backward_kernel<<<GET_BLOCKS(out_grad_domain.get_volume()), CUDA_NUM_THREADS>>>(
     //out_grad_domain.get_volume(), alpha, alpha, ele->op_type, out_grad_ptr, in1_ptr, in2_ptr,
     //in1_grad_ptr, in2_grad_ptr);
@@ -554,7 +604,7 @@ void ElementBinary::backward(const FFModel& ff)
   }
 
   IndexLauncher launcher(ELEMENTBINARY_BWD_TASK_ID, task_is,
-                         TaskArgument(this, sizeof(ElementBinary)), argmap,
+                         TaskArgument(NULL, 0), argmap,
                          Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
                          FFConfig::get_hash_id(std::string(name)));
   // regions[0](I): output_grad
@@ -596,10 +646,9 @@ ElementBinaryMeta::ElementBinaryMeta(FFHandler handler)
   op_type = OP_ANY;
 }
 
-bool ElementBinary::measure_compute_time(Simulator* sim,
-                                         const ParallelConfig& pc,
-                                         float& forward_time,
-                                         float& backward_time)
+bool ElementBinary::measure_operator_cost(Simulator* sim,
+                                          const ParallelConfig& pc,
+                                          CostMetrics& cost_metrics)
 {
   Tensor sub_output, sub_input1, sub_input0;
   if (!outputs[0].get_output_sub_tensor(pc, sub_output, op_type))
@@ -624,64 +673,46 @@ bool ElementBinary::measure_compute_time(Simulator* sim,
   }
   checkCUDNN(cudnnSetOpTensorDescriptor(m->opDesc, mode,
       CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN));
-  Domain input_domain, output_domain;
-  input_domain.dim = sub_input0.numDim;
-  for (int i = 0; i < sub_input0.numDim; i++) {
-    input_domain.rect_data[i] = 0;
-    input_domain.rect_data[i+Domain::MAX_RECT_DIM] = sub_input0.adim[i]-1;
-  }
-  output_domain.dim = sub_output.numDim;
-  for (int i = 0; i < sub_output.numDim; i++) {
-    output_domain.rect_data[i] = 0;
-    output_domain.rect_data[i+Domain::MAX_RECT_DIM] = sub_output.adim[i]-1;
-  }
+  Domain input_domain = sub_input0.get_domain();
+  Domain output_domain = sub_output.get_domain();
   checkCUDNN(cudnnSetTensorDescriptorFromDomain(m->inputTensor, input_domain));
   checkCUDNN(cudnnSetTensorDescriptorFromDomain(m->outputTensor, output_domain));
   sim->free_all();
   float* input0_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
   assert(input0_ptr != NULL);
-  float* input0_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
-  assert(input0_grad_ptr != NULL);
   float* input1_ptr = (float*)sim->allocate(sub_input1.get_volume(), DT_FLOAT);
   assert(input1_ptr != NULL);
-  float* input1_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
-  assert(input1_grad_ptr != NULL);
   float* output_ptr = (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
   assert(output_ptr != NULL);
-  // measure forward time
-  checkCUDA(cudaDeviceSynchronize());
-  for (int i = 0; i < sim->warmup_times + sim->repeat_times; i++) {
-    if (i == sim->warmup_times) {
-      checkCUDA(cudaEventRecord(sim->start_event));
-    }
+
+  std::function<void()> forward, backward;
+  forward = [&] {
     forward_kernel(m, input0_ptr, input1_ptr, output_ptr);
-    //elewise_binary_forward_kernel<<<GET_BLOCKS(sub_output.get_volume()), CUDA_NUM_THREADS>>>(
-    //    sub_output.get_volume(), alpha, beta, op_type,
-    //    input0_ptr, input1_ptr, output_ptr);
+  };
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    float* input0_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
+    assert(input0_grad_ptr != NULL);
+    float* input1_grad_ptr = (float*)sim->allocate(sub_input0.get_volume(), DT_FLOAT);
+    assert(input1_grad_ptr != NULL);
+    float* output_grad_ptr = (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
+    assert(output_grad_ptr != NULL);
+    backward = [&] {
+      backward_kernel(m, output_grad_ptr, input0_ptr, input1_ptr, input0_grad_ptr, input1_grad_ptr);
+    };
   }
-  checkCUDA(cudaEventRecord(sim->end_event));
-  checkCUDA(cudaEventSynchronize(sim->end_event));
-  float milliseconds;
-  cudaEventElapsedTime(&milliseconds, sim->start_event, sim->end_event);
-  forward_time = milliseconds / sim->repeat_times;
 
-  // measure backward time
-  checkCUDA(cudaDeviceSynchronize());
-  for (int i = 0; i < sim->warmup_times + sim->repeat_times; i++) {
-    if (i == sim->warmup_times) {
-      checkCUDA(cudaEventRecord(sim->start_event));
-    }
-    backward_kernel(m, output_ptr, input0_ptr, input1_ptr, input0_grad_ptr, input1_grad_ptr);
-    //elewise_binary_backward_kernel<<<GET_BLOCKS(sub_output.get_volume()), CUDA_NUM_THREADS>>>(
-    //    sub_output.get_volume(), alpha, alpha, op_type,
-    //    output_ptr, input0_ptr, input1_ptr, input0_grad_ptr, input1_grad_ptr);
+  inner_measure_operator_cost(sim, forward, backward, cost_metrics);
+
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    printf("[Measure Elewise Binary] name(%s) num_elements(%zu) forward_time(%.4lf) backward_time(%.4lf)\n",
+        name, sub_output.get_volume(),
+        cost_metrics.forward_time,
+        cost_metrics.backward_time);
+  } else {
+    printf("[Measure Elewise Binary] name(%s) num_elements(%zu) forward_time(%.4lf)\n",
+        name, sub_output.get_volume(),
+        cost_metrics.forward_time);
   }
-  checkCUDA(cudaEventRecord(sim->end_event));
-  checkCUDA(cudaEventSynchronize(sim->end_event));
-  cudaEventElapsedTime(&milliseconds, sim->start_event, sim->end_event);
-  backward_time = milliseconds / sim->repeat_times;
 
-  printf("[Measure Elewise Binary] num_elements(%zu) forward_time(%.4lf) backward_time(%.4lf)\n",
-         sub_output.get_volume(), forward_time, backward_time);
   return true;
 }

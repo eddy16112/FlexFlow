@@ -19,48 +19,45 @@ from flexflow.keras.datasets import mnist
 from accuracy import ModelAccuracy
 
 def next_batch(idx, x_train, input1, ffconfig, ffmodel):
-  start = idx*ffconfig.get_batch_size()
-  x_train_batch = x_train[start:start+ffconfig.get_batch_size(), :]
+  start = idx*ffconfig.batch_size
+  x_train_batch = x_train[start:start+ffconfig.batch_size, :]
 
   # input1.inline_map(ffconfig)
   # input_array = input1.get_array(ffconfig, DataType.DT_FLOAT)
   # print(input_array.shape)
-  # for i in range(0, ffconfig.get_batch_size()):
+  # for i in range(0, ffconfig.batch_size):
   #   for j in range(0, 784):
   #     input_array[i][j] = x_train_batch[i][j]
   # input1.inline_unmap(ffconfig)
   #TODO: test set tensor
-  p_handle = ffi.new('flexflow_parameter_t *')
-  p_handle.impl = input1.handle.impl
-  input1_par = Parameter(p_handle[0])
-  input1_par.set_weights(ffmodel, x_train_batch)
+  input1.set_tensor(ffmodel, x_train_batch, ParameterSyncType.PS)
 
 def next_batch_label(idx, x_train, input1, ffconfig, ffmodel):
-  start = idx*ffconfig.get_batch_size()
-  x_train_batch = x_train[start:start+ffconfig.get_batch_size(), :]
+  start = idx*ffconfig.batch_size
+  x_train_batch = x_train[start:start+ffconfig.batch_size, :]
 
   # input1.inline_map(ffconfig)
   # input_array = input1.get_array(ffconfig, DataType.DT_INT32)
   # print(input_array.shape)
-  # for i in range(0, ffconfig.get_batch_size()):
+  # for i in range(0, ffconfig.batch_size):
   #   for j in range(0, 1):
   #     input_array[i][j] = x_train_batch[i][j]
   # input1.inline_unmap(ffconfig)
   #
-  p_handle = ffi.new('flexflow_parameter_t *')
-  p_handle.impl = input1.handle.impl
-  input1_par = Parameter(p_handle[0])
-  input1_par.set_weights(ffmodel, x_train_batch)
+  input1.set_tensor(ffmodel, x_train_batch, ParameterSyncType.PS)
+  # x_batch = input1.get_tensor(ffmodel, CommType.PS)
+  # print(x_batch)
+  # print(x_train_batch)
+  # assert 0
 
 
 def top_level_task():
   alexnetconfig = NetConfig()
   ffconfig = FFConfig()
-  ffconfig.parse_args()
-  print("Python API batchSize(%d) workersPerNodes(%d) numNodes(%d)" %(ffconfig.get_batch_size(), ffconfig.get_workers_per_node(), ffconfig.get_num_nodes()))
+  print("Python API batchSize(%d) workersPerNodes(%d) numNodes(%d)" %(ffconfig.batch_size, ffconfig.workers_per_node, ffconfig.num_nodes))
   ffmodel = FFModel(ffconfig)
 
-  dims_input = [ffconfig.get_batch_size(), 784]
+  dims_input = [ffconfig.batch_size, 784]
   input_tensor = ffmodel.create_tensor(dims_input, DataType.DT_FLOAT);
 
   num_samples = 60000
@@ -82,34 +79,32 @@ def top_level_task():
   t5 = ffmodel.softmax(t4)
 
   ffoptimizer = SGDOptimizer(ffmodel, 0.01)
-  ffmodel.set_sgd_optimizer(ffoptimizer)
+  ffmodel.optimizer = ffoptimizer
   ffmodel.compile(loss_type=LossType.LOSS_SPARSE_CATEGORICAL_CROSSENTROPY, metrics=[MetricsType.METRICS_ACCURACY, MetricsType.METRICS_SPARSE_CATEGORICAL_CROSSENTROPY])
-  label_tensor = ffmodel.get_label_tensor()
+  label_tensor = ffmodel.label_tensor
 
   next_batch(0, x_train, input_tensor, ffconfig, ffmodel)
   next_batch_label(0, y_train, label_tensor, ffconfig, ffmodel)
 
   ffmodel.init_layers()
 
-  epochs = ffconfig.get_epochs()
+  epochs = ffconfig.epochs
 
   ts_start = ffconfig.get_current_time()
   for epoch in range(0,epochs):
     ct = 0
     ffmodel.reset_metrics()
-    iterations = num_samples / ffconfig.get_batch_size()
+    iterations = num_samples / ffconfig.batch_size
     for iter in range(0, int(iterations)):
       next_batch(ct, x_train, input_tensor, ffconfig, ffmodel)
       next_batch_label(ct, y_train, label_tensor, ffconfig, ffmodel)
       ct += 1
-      if (epoch > 0):
-        ffconfig.begin_trace(111)
+      ffconfig.begin_trace(111)
       ffmodel.forward()
       ffmodel.zero_gradients()
       ffmodel.backward()
       ffmodel.update()
-      if (epoch > 0):
-        ffconfig.end_trace(111)
+      ffconfig.end_trace(111)
 
   ts_end = ffconfig.get_current_time()
   run_time = 1e-6 * (ts_end - ts_start);

@@ -27,7 +27,8 @@ Tensor FFModel::multihead_attention(const Tensor& query,
                                     bool bias,
                                     bool add_bias_kv,
                                     bool add_zero_attn,
-                                    Initializer* kernel_initializer)
+                                    Initializer* kernel_initializer,
+                                    const char* name)
 {
   if (kernel_initializer == NULL) {
     int seed = std::rand();
@@ -38,7 +39,7 @@ Tensor FFModel::multihead_attention(const Tensor& query,
   //}
   MultiHeadAttention* attn = new MultiHeadAttention(*this, query, key, value,
       embed_dim, num_heads, kdim, vdim, dropout, bias, add_bias_kv, add_zero_attn,
-      kernel_initializer/*, bias_initializer*/);
+      kernel_initializer/*, bias_initializer*/, name);
   layers.push_back(attn);
   return attn->outputs[0];
 }
@@ -51,18 +52,19 @@ MultiHeadAttention::MultiHeadAttention(FFModel& model,
                                        int _kdim, int _vdim,
                                        float _dropout, bool _bias,
                                        bool _add_bias_kv, bool _add_zero_attn,
-                                       Initializer* _kernel_initializer)
+                                       Initializer* _kernel_initializer,
+                                       const char* name)
 //                                       Initializer* _bias_initializer)
-: Op(model, OP_MULTIHEAD_ATTENTION,
-     "Attention_"+std::to_string(_embed_dim)+std::to_string(_num_heads),
+: Op(model,
+     OP_MULTIHEAD_ATTENTION,
+     name,
      _query, _key, _value),
   dropout(_dropout), bias(_bias),
   add_bias_kv(_add_bias_kv), add_zero_attn(_add_zero_attn),
   qSize(_query.adim[0]), kSize(_key.adim[0]), vSize(_value.adim[0]),
   qProjSize(_kdim), kProjSize(_kdim), vProjSize(_vdim), oProjSize(_embed_dim),
   qoSeqLength(_query.adim[1]), kvSeqLength(_key.adim[1]),
-  kernel_initializer(_kernel_initializer),
-  profiling(model.config.profiling)
+  kernel_initializer(_kernel_initializer)
   //bias_initializer(_bias_initializer)
 {
   // assert key and value have the same sequence length
@@ -88,9 +90,15 @@ void MultiHeadAttention::create_weights(FFModel& model)
   // Retrive the task indexspace for the op
   std::string pcname = name;
   task_is = model.get_or_create_task_is(3, pcname);
+#ifdef FF_USE_NCCL
+  ParameterSyncType comm_type = ParameterSyncType::NCCL;
+#else
+  ParameterSyncType comm_type = ParameterSyncType::PS;
+#endif
   {
     const int dims[2] = {weights[0].adim[1], weights[0].adim[0]};
-    weights[0] = model.create_linear_weight<2>(this, dims, (IndexSpaceT<3>)task_is, DT_FLOAT, kernel_initializer);
+    weights[0] = model.create_linear_weight<2, 3>(this, dims, DT_FLOAT,
+        kernel_initializer, true/*create_grad*/, comm_type);
   }
 }
 
@@ -171,6 +179,7 @@ OpMeta* MultiHeadAttention::init_task(
          .only_kind(Memory::GPU_FB_MEM).best_affinity_to(task->target_proc).first();
   MultiHeadAttentionMeta* m = new MultiHeadAttentionMeta(handle,
       attn, gpu_mem, num_samples, num_heads);
+  m->profiling = attn->profiling;
   assert(acc_weight.rect.volume() * sizeof(float) == m->weightSize);
   return m;
 }
@@ -187,6 +196,9 @@ void MultiHeadAttention::init(const FFModel& ff)
   int idx = 0;
   for (PointInRectIterator<3> it(rect); it(); it++) {
     FFHandler handle = ff.handlers[pc.device_ids[idx++]];
+#ifdef FF_USE_NCCL
+    handle.ncclComm = pc.nccl_comms[idx-1];
+#endif
     argmap.set_point(*it, TaskArgument(&handle, sizeof(FFHandler)));
   }
   IndexLauncher launcher(ATTENTION_INIT_TASK_ID, task_is,
@@ -221,13 +233,14 @@ void MultiHeadAttention::init(const FFModel& ff)
   }
 }
 
+/*static*/
 void MultiHeadAttention::forward_kernel(
     const MultiHeadAttentionMeta* m,
     const float* query_ptr,
     const float* key_ptr,
     const float* value_ptr,
     const float* weight_ptr,
-    float* output_ptr) const
+    float* output_ptr)
 {
   checkCUDNN(cudnnMultiHeadAttnForward(m->handle.dnn,
       m->attnDesc, -1, m->loWinIdx, m->hiWinIdx,
@@ -253,7 +266,7 @@ void MultiHeadAttention::forward_task(
 {
   assert(regions.size() == 5);
   assert(task->regions.size() == regions.size());
-  const MultiHeadAttention* attn = (MultiHeadAttention*) task->args;
+  //const MultiHeadAttention* attn = (MultiHeadAttention*) task->args;
   const MultiHeadAttentionMeta* m = *((MultiHeadAttentionMeta**) task->local_args);
   TensorAccessorR<float, 3> acc_query(
       regions[0], task->regions[0], FID_DATA, ctx, runtime);
@@ -267,7 +280,7 @@ void MultiHeadAttention::forward_task(
       regions[4], task->regions[4], FID_DATA, ctx, runtime,
       false/*readOutput*/);
   cudaEvent_t t_start, t_end;
-  if (attn->profiling) {
+  if (m->profiling) {
     cudaEventCreate(&t_start);
     cudaEventCreate(&t_end);
     cudaEventRecord(t_start);
@@ -277,9 +290,10 @@ void MultiHeadAttention::forward_task(
   checkCUDA(cudaStreamCreate(&stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
-  attn->forward_kernel(m, acc_query.ptr, acc_key.ptr, acc_value.ptr,
+  MultiHeadAttention::forward_kernel(m,
+      acc_query.ptr, acc_key.ptr, acc_value.ptr,
       acc_weight.ptr, acc_output.ptr);
-  if (attn->profiling) {
+  if (m->profiling) {
     cudaEventRecord(t_end);
     checkCUDA(cudaEventSynchronize(t_end));
     float elapsed = 0;
@@ -304,7 +318,7 @@ void MultiHeadAttention::forward(const FFModel& ff)
     argmap.set_point(*it, TaskArgument(&mp, sizeof(OpMeta*)));
   }
   IndexLauncher launcher(ATTENTION_FWD_TASK_ID, task_is,
-      TaskArgument(this, sizeof(MultiHeadAttention)), argmap,
+      TaskArgument(NULL, 0), argmap,
       Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
       FFConfig::get_hash_id(std::string(name)));
   launcher.add_region_requirement(
@@ -330,6 +344,7 @@ void MultiHeadAttention::forward(const FFModel& ff)
   runtime->execute_index_space(ctx, launcher);
 }
 
+/*static*/
 void MultiHeadAttention::backward_kernel(
     const MultiHeadAttentionMeta* m,
     const float* query_ptr,
@@ -340,7 +355,7 @@ void MultiHeadAttention::backward_kernel(
     float* value_grad_ptr,
     const float* weight_ptr,
     float* weight_grad_ptr,
-    const float* output_grad_ptr) const
+    const float* output_grad_ptr)
 {
   checkCUDNN(cudnnMultiHeadAttnBackwardData(m->handle.dnn,
       m->attnDesc, m->loWinIdx, m->hiWinIdx, m->devQoSeqArray,
@@ -376,7 +391,7 @@ void MultiHeadAttention::backward_task(
 {
   assert(regions.size() >= 7);
   assert(task->regions.size() == regions.size());
-  MultiHeadAttention* attn = (MultiHeadAttention*) task->args;
+  //MultiHeadAttention* attn = (MultiHeadAttention*) task->args;
   const MultiHeadAttentionMeta* m = *((MultiHeadAttentionMeta**) task->local_args);
   TensorAccessorR<float, 3> acc_query(
       regions[0], task->regions[0], FID_DATA, ctx, runtime);
@@ -396,7 +411,7 @@ void MultiHeadAttention::backward_task(
       true/*readOutput*/);
   float *key_grad_ptr, *value_grad_ptr;
   assert(acc_query_grad.rect == acc_query.rect);
-  assert(acc_weight_grad.rect == acc_weight.rect);
+  assert(acc_weight_grad.rect.volume() == acc_weight.rect.volume());
   if (regions.size() == 7) {
     // assert query == key and query == value
     assert(regions[0].get_logical_region() == regions[1].get_logical_region());
@@ -405,8 +420,7 @@ void MultiHeadAttention::backward_task(
     value_grad_ptr = acc_query_grad.ptr;
   } else if (regions.size() == 8) {
     // assert query == key
-    assert(regions[0].get_logical_region() == regions[2].get_logical_region());
-    key_grad_ptr = acc_query_grad.ptr;
+    assert(regions[0].get_logical_region() == regions[1].get_logical_region());
     TensorAccessorW<float, 3> acc_value_grad(
         regions[7], task->regions[7], FID_DATA, ctx, runtime,
         true/*readOutput*/);
@@ -427,7 +441,7 @@ void MultiHeadAttention::backward_task(
     key_grad_ptr = acc_key_grad.ptr;
   }
   cudaEvent_t t_start, t_end;
-  if (attn->profiling) {
+  if (m->profiling) {
     cudaEventCreate(&t_start);
     cudaEventCreate(&t_end);
     cudaEventRecord(t_start);
@@ -438,11 +452,12 @@ void MultiHeadAttention::backward_task(
   checkCUDA(cudaStreamCreate(&stream));
   checkCUDNN(cudnnSetStream(m->handle.dnn, stream));
 #endif
-  attn->backward_kernel(m, acc_query.ptr, acc_query_grad.ptr,
+  MultiHeadAttention::backward_kernel(m,
+      acc_query.ptr, acc_query_grad.ptr,
       acc_key.ptr, key_grad_ptr, acc_value.ptr, value_grad_ptr,
       acc_weight.ptr, acc_weight_grad.ptr,
       acc_output_grad.ptr);
-  if (attn->profiling) {
+  if (m->profiling) {
     cudaEventRecord(t_end);
     checkCUDA(cudaEventSynchronize(t_end));
     float elapsed = 0;
@@ -465,7 +480,7 @@ void MultiHeadAttention::backward(const FFModel& ff)
     argmap.set_point(*it, TaskArgument(&mp, sizeof(OpMeta*)));
   }
   IndexLauncher launcher(ATTENTION_BWD_TASK_ID, task_is,
-      TaskArgument(this, sizeof(MultiHeadAttention)), argmap,
+      TaskArgument(NULL, 0), argmap,
       Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
       FFConfig::get_hash_id(std::string(name)));
   launcher.add_region_requirement(
@@ -496,7 +511,7 @@ void MultiHeadAttention::backward(const FFModel& ff)
       RegionRequirement(input_grad_lps[0], 0/*projection id*/,
           READ_WRITE, EXCLUSIVE, inputs[0].region_grad));
   launcher.add_field(6, FID_DATA);
-  int num_regions = 6;
+  int num_regions = 7;
   if (inputs[1].region != inputs[0].region) {
     // when key != query
     launcher.add_region_requirement(
@@ -541,8 +556,14 @@ MultiHeadAttentionMeta::MultiHeadAttentionMeta(FFHandler handler,
   //    num_samples, attn->qSize, attn->kSize, attn->vSize, attn->qProjSize, attn->kProjSize);
   //printf("vProjSize(%d) oProjSize(%d) qoSeqLength(%d) kvSeqLength(%d)\n",
   //    attn->vProjSize, attn->oProjSize, attn->qoSeqLength, attn->kvSeqLength);
+  cudnnMathType_t math_type;
+  if (handle.allowTensorOpMathConversion) {
+    math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
+  } else {
+    math_type = CUDNN_TENSOR_OP_MATH;
+  }
   checkCUDNN(cudnnSetAttnDescriptor(attnDesc, attnMode, num_heads,
-      1.0f/*smScalar*/, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, CUDNN_DEFAULT_MATH,
+      1.0f/*smScalar*/, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, math_type,
       NULL/*attnDropoutDesc*/, NULL/*postDropoutDesc*/,
       attn->qSize, attn->kSize, attn->vSize, attn->qProjSize, attn->kProjSize,
       attn->vProjSize, attn->oProjSize, attn->qoSeqLength, attn->kvSeqLength,
@@ -644,10 +665,9 @@ MultiHeadAttentionMeta::~MultiHeadAttentionMeta(void)
   checkCUDNN(cudnnDestroySeqDataDescriptor(oDesc));
 }
 
-bool MultiHeadAttention::measure_compute_time(Simulator* sim,
+bool MultiHeadAttention::measure_operator_cost(Simulator* sim,
     const ParallelConfig& pc,
-    float& forward_time,
-    float& backward_time)
+    CostMetrics& cost_metrics)
 {
   Tensor sub_output, sub_query, sub_key, sub_value;
   if (!inputs[0].get_input_sub_tensor(pc, sub_query, OP_MULTIHEAD_ATTENTION))
@@ -671,61 +691,58 @@ bool MultiHeadAttention::measure_compute_time(Simulator* sim,
   sim->free_all();
   const float* query_ptr =
       (const float*)sim->allocate(sub_query.get_volume(), DT_FLOAT);
-  float* query_grad_ptr =
-      (float*)sim->allocate(sub_query.get_volume(), DT_FLOAT);
   const float* key_ptr =
       (const float*)sim->allocate(sub_key.get_volume(), DT_FLOAT);
-  float* key_grad_ptr =
-      (float*)sim->allocate(sub_key.get_volume(), DT_FLOAT);
   const float* value_ptr =
       (const float*)sim->allocate(sub_value.get_volume(), DT_FLOAT);
-  float* value_grad_ptr =
-      (float*)sim->allocate(sub_value.get_volume(), DT_FLOAT);
   const float* weight_ptr =
       (const float*)sim->allocate(sub_weight.get_volume(), DT_FLOAT);
-  float* weight_grad_ptr =
-      (float*)sim->allocate(sub_weight.get_volume(), DT_FLOAT);
   float* output_ptr =
       (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
-  float* output_grad_ptr =
-      (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
-  assert(output_grad_ptr != NULL);
+  assert(output_ptr != NULL);
 
-  // measure forward time
-  checkCUDA(cudaDeviceSynchronize());
-  for (int i = 0; i < sim->warmup_times + sim->repeat_times; i++) {
-    if (i == sim->warmup_times) {
-      checkCUDA(cudaEventRecord(sim->start_event));
-    }
+  std::function<void()> forward, backward;
+  forward = [&] {
     forward_kernel(m, query_ptr, key_ptr, value_ptr, weight_ptr, output_ptr);
-  }
-  checkCUDA(cudaEventRecord(sim->end_event));
-  checkCUDA(cudaEventSynchronize(sim->end_event));
-  float milliseconds;
-  cudaEventElapsedTime(&milliseconds, sim->start_event, sim->end_event);
-  forward_time = milliseconds / sim->repeat_times;
+  };
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    float* query_grad_ptr =
+        (float*)sim->allocate(sub_query.get_volume(), DT_FLOAT);
+    float* key_grad_ptr =
+        (float*)sim->allocate(sub_key.get_volume(), DT_FLOAT);
+    float* value_grad_ptr =
+        (float*)sim->allocate(sub_value.get_volume(), DT_FLOAT);
+    float* weight_grad_ptr =
+        (float*)sim->allocate(sub_weight.get_volume(), DT_FLOAT);
+    float* output_grad_ptr =
+        (float*)sim->allocate(sub_output.get_volume(), DT_FLOAT);
+    assert(output_grad_ptr != NULL);
 
-  // measure backward time
-  checkCUDA(cudaDeviceSynchronize());
-  for (int i = 0; i < sim->warmup_times + sim->repeat_times; i++) {
-    if (i == sim->warmup_times) {
-      checkCUDA(cudaEventRecord(sim->start_event));
-    }
-    backward_kernel(m, query_ptr, query_grad_ptr, key_ptr, key_grad_ptr,
+    backward = [&] {
+      backward_kernel(m, query_ptr, query_grad_ptr, key_ptr, key_grad_ptr,
         value_ptr, value_grad_ptr, weight_ptr, weight_grad_ptr, output_grad_ptr);
+    };
   }
-  checkCUDA(cudaEventRecord(sim->end_event));
-  checkCUDA(cudaEventSynchronize(sim->end_event));
-  cudaEventElapsedTime(&milliseconds, sim->start_event, sim->end_event);
-  backward_time = milliseconds / sim->repeat_times;
 
-  printf("[Measure MultiHeadAttention] query(%d %d %d) key(%d %d %d) value(%d %d %d) output(%d %d %d)"
+  inner_measure_operator_cost(sim, forward, backward, cost_metrics);
+
+  if (sim->computationMode == COMP_MODE_TRAINING) {
+    printf("[Measure MultiHeadAttention] query(%d %d %d) key(%d %d %d) value(%d %d %d) output(%d %d %d)"
          "forward_time(%.4lf) backward_time(%.4lf)\n",
          sub_query.adim[2], sub_query.adim[1], sub_query.adim[0],
          sub_key.adim[2], sub_key.adim[1], sub_key.adim[0],
          sub_value.adim[2], sub_value.adim[1], sub_value.adim[0],
          sub_output.adim[2], sub_output.adim[1], sub_output.adim[0],
-         forward_time, backward_time);
+         cost_metrics.forward_time, cost_metrics.backward_time);
+  } else {
+    printf("[Measure MultiHeadAttention] query(%d %d %d) key(%d %d %d) value(%d %d %d) output(%d %d %d)"
+         "forward_time(%.4lf)\n",
+         sub_query.adim[2], sub_query.adim[1], sub_query.adim[0],
+         sub_key.adim[2], sub_key.adim[1], sub_key.adim[0],
+         sub_value.adim[2], sub_value.adim[1], sub_value.adim[0],
+         sub_output.adim[2], sub_output.adim[1], sub_output.adim[0],
+         cost_metrics.forward_time);
+  }
   // Free multiheadattentionmeta
   delete m;
   return true;
