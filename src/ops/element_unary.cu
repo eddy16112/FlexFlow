@@ -137,6 +137,7 @@ OpMeta* ElementUnary::init_task(const Task *task,
   FFHandler handle = *((FFHandler*) task->local_args);
   ElementUnaryMeta* m = new ElementUnaryMeta(handle);
   m->op_type = eu->op_type;
+  m->profiling = eu->profiling;
   if (use_cudnn(m->op_type))
   {
     cudnnActivationMode_t mode;
@@ -324,7 +325,7 @@ void ElementUnary::forward(const FFModel& ff)
       assert(false);
   }
   IndexLauncher launcher(ELEMENTUNARY_FWD_TASK_ID, task_is,
-                         TaskArgument(this, sizeof(ElementUnary)), argmap,
+                         TaskArgument(NULL, 0), argmap,
                          Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
                          FFConfig::get_hash_id(std::string(name)));
   launcher.add_region_requirement(
@@ -452,7 +453,7 @@ void ElementUnary::backward(const FFModel& ff)
   }
 
   IndexLauncher launcher(ELEMENTUNARY_BWD_TASK_ID, task_is,
-                         TaskArgument(this, sizeof(ElementUnary)), argmap,
+                         TaskArgument(NULL, 0), argmap,
                          Predicate::TRUE_PRED, false/*must*/, 0/*mapper_id*/,
                          FFConfig::get_hash_id(std::string(name)));
   // regions[0](I): input

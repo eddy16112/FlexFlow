@@ -100,6 +100,7 @@ enum TaskIDs {
   ATTENTION_FWD_TASK_ID,
   ATTENTION_BWD_TASK_ID,
   MSELOSS_BWD_TASK_ID,
+  FUSEDOP_INIT_TASK_ID,
   FUSEDOP_FWD_TASK_ID,
   FUSEDOP_BWD_TASK_ID,
   //Metrics tasks
@@ -177,6 +178,7 @@ public:
   OpMeta(FFHandler _handle);
 public:
   FFHandler handle;
+  bool profiling; // Measure the run time of the task
 };
 
 class Op {
@@ -233,6 +235,7 @@ public:
   //Tensor locals[MAX_NUM_LOCALS];
   OpMeta* meta[MAX_NUM_WORKERS];
   int numInputs, numWeights, numOutputs;
+  bool profiling;
 #ifdef FF_USE_NCCL
   ncclUniqueId ncclId;
 #endif
@@ -532,7 +535,7 @@ private:
 public:
   //IndexSpace task_is;
   OperatorType op_type;
-  bool profiling;
+  //bool profiling;
 };
 
 class ElementUnaryMeta : public OpMeta {
@@ -594,7 +597,8 @@ public:
   cudnnConvolutionFwdAlgo_t fwdAlgo;
   cudnnConvolutionBwdFilterAlgo_t bwdFilterAlgo;
   cudnnConvolutionBwdDataAlgo_t bwdDataAlgo;
-  bool relu;
+  bool relu, use_bias;
+  char op_name[MAX_OPNAME];
 };
 
 class Conv2D : public Op {
@@ -649,7 +653,7 @@ public:
 public:
   //IndexSpaceT<4> task_is;
   int in_channels, out_channels, kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w, groups;
-  bool profiling, use_bias;
+  bool use_bias;
   ActiMode activation;
   Initializer *kernel_initializer;
   Initializer *bias_initializer;
@@ -707,7 +711,6 @@ public:
   //IndexSpaceT<4> task_is;
   float rate;
   unsigned long long seed;
-  bool profiling;
 };
 
 class Pool2D : public Op {
@@ -752,7 +755,6 @@ public:
   int kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w;
   PoolType pool_type;
   ActiMode activation;
-  bool profiling;
 };
 
 class Pool2DMeta : public OpMeta {
@@ -762,6 +764,7 @@ public:
   cudnnActivationDescriptor_t actiDesc;
   cudnnPoolingDescriptor_t poolDesc;
   bool relu;
+  char op_name[MAX_OPNAME];
 };
 
 class BatchNorm : public Op {
@@ -799,8 +802,22 @@ public:
   bool measure_operator_cost(Simulator* sim,
                              const ParallelConfig& pc,
                              CostMetrics& cost_metrics);
+  static void forward_kernel(BatchNormMeta *m,
+                             float const *input_ptr,
+                             float *output_ptr,
+                             float const *scale_ptr,
+                             float const *bias_ptr);
+  static void backward_kernel(BatchNormMeta *m,
+                              float const *input_ptr,
+                              float *output_grad_ptr,
+                              float const *output_ptr,
+                              float *input_grad_ptr,
+                              float const *scale_ptr,
+                              float *scale_grad_ptr,
+                              float *bias_grad_ptr,
+                              size_t numElements);
 public:
-  bool relu, profiling;
+  bool relu;
   int num_replica;
   //Tensor locals[MAX_NUM_LOCALS];
 };
@@ -813,6 +830,7 @@ public:
   cudnnBatchNormMode_t mode;
   float *runningMean, *runningVar, *saveMean, *saveVar;
   bool relu;
+  coord_t numChannels;
 };
 
 class LinearMeta : public OpMeta {
@@ -822,6 +840,8 @@ public:
   cudnnActivationDescriptor_t actiDesc;
   const float *one_ptr;
   ActiMode activation;
+  bool use_bias;
+  char op_name[MAX_OPNAME];
 };
 
 class Linear : public Op {
@@ -906,7 +926,7 @@ private:
 public:
   int in_channels, out_channels;
   Tensor replica;
-  bool profiling, use_bias;
+  bool use_bias;
   ActiMode activation;
   Initializer *kernel_initializer;
   Initializer *bias_initializer;
@@ -965,7 +985,7 @@ private:
   template<int NDIM>
   void backward_with_dim(const FFModel& ff);
 public:
-  bool profiling;
+  //bool profiling;
 };
 
 class Embedding : public Op {
@@ -1024,10 +1044,15 @@ public:
   //IndexSpaceT<2> task_is;
   int num_entries, out_channels;
   AggrMode aggr;
-  bool profiling;
+  //bool profiling;
   Initializer* kernel_initializer;
 };
 
+class EmbeddingMeta : public OpMeta {
+public:
+  EmbeddingMeta(FFHandler handle): OpMeta(handle) {}
+  AggrMode aggr;
+};
 
 class Flat : public Op {
 public:
@@ -1071,6 +1096,7 @@ public:
 };
 
 class MultiHeadAttentionMeta;
+
 class MultiHeadAttention : public Op {
 public:
   MultiHeadAttention(FFModel& model,
@@ -1102,13 +1128,13 @@ public:
   bool measure_operator_cost(Simulator* sim,
                              const ParallelConfig& pc,
                              CostMetrics& cost_metrics);
-  void forward_kernel(const MultiHeadAttentionMeta* m,
+  static void forward_kernel(const MultiHeadAttentionMeta* m,
                       const float* query_ptr,
                       const float* key_ptr,
                       const float* value_ptr,
                       const float* weight_ptr,
-                      float* output_ptr) const;
-  void backward_kernel(const MultiHeadAttentionMeta* m,
+                      float* output_ptr);
+  static void backward_kernel(const MultiHeadAttentionMeta* m,
                        const float* query_ptr,
                        float* query_grad_ptr,
                        const float* key_ptr,
@@ -1117,13 +1143,13 @@ public:
                        float* value_grad_ptr,
                        const float* weight_ptr,
                        float* weight_grad_ptr,
-                       const float* output_grad_ptr) const;
+                       const float* output_grad_ptr);
 public:
   int qSize, kSize, vSize, qProjSize, kProjSize, vProjSize, oProjSize;
   int qoSeqLength, kvSeqLength;
   Initializer* kernel_initializer;
   float dropout;
-  bool profiling, bias, add_bias_kv, add_zero_attn;
+  bool bias, add_bias_kv, add_zero_attn;
 };
 
 class MultiHeadAttentionMeta : public OpMeta {
@@ -1145,10 +1171,9 @@ public:
 
 class SoftmaxMeta : public OpMeta {
 public:
-  SoftmaxMeta(FFHandler handle);
-#ifndef DISABLE_COMPUTATION
+  SoftmaxMeta(FFHandler handle); 
   cudnnTensorDescriptor_t inputTensor;
-#endif
+  char op_name[MAX_OPNAME];
 };
 
 class Softmax : public Op {
@@ -1186,9 +1211,8 @@ public:
   static void backward_kernel(float *input_grad_ptr,
                               float const *output_grad_ptr,
                               size_t num_elements);
-
 public:
-  bool profiling;
+  //bool profiling;
 };
 
 class TransposeMeta : public OpMeta {
@@ -1326,6 +1350,7 @@ private:
 class TopKMeta : public OpMeta {
 public:
   TopKMeta(FFHandler handle);
+  bool sorted;
 };
 
 class TopK : public Op {
@@ -1369,8 +1394,9 @@ private:
   template<int NDIM>
   void create_output_and_partition_with_dim(FFModel& model);
 public:
-  bool k, sorted;
-  bool profiling;
+  int k;
+  bool sorted;
+  //bool profiling;
 };
 
 class ConcatMeta : public OpMeta {
@@ -1422,7 +1448,7 @@ public:
                              CostMetrics& cost_metrics);
 public:
   int axis;
-  bool profiling;
+  //bool profiling;
 };
 
 class Split : public Op {
@@ -1465,13 +1491,15 @@ private:
 public:
   int axis;
   //IndexSpace task_is;
-  bool profiling;
+  //bool profiling;
 };
 
+class FusedOp;
 class FusedOpMeta {
 public:
   FusedOpMeta(void) {}
   OpMeta* meta[MAX_NUM_FUSED_OPERATORS];
+  FusedOp* fused_op;
   int numOperators;
 };
 
