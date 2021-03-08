@@ -311,7 +311,7 @@ void BatchNorm::forward_kernel(BatchNormMeta *m,
   cudaStream_t stream = get_stream();
   coord_t numChannels = m->numChannels;
   assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS, 0, stream>>>(m->runningMean, numChannels, 0.0f);
-  assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS, 0, stram>>>(m->runningVar, numChannels, 0.0f);
+  assign_kernel<<<GET_BLOCKS(numChannels), CUDA_NUM_THREADS, 0, stream>>>(m->runningVar, numChannels, 0.0f);
   checkCUDNN(cudnnBatchNormalizationForwardTraining(
              m->handle.dnn, m->mode, &alpha, &beta, m->inputTensor, input_ptr,
              m->outputTensor, output_ptr, m->biasTensor, scale_ptr, bias_ptr,
