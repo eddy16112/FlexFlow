@@ -454,10 +454,10 @@ class BaseModel(object):
     out_t = 0
 
     for op in self._input_ops:
-      op.set_batch_size(self._ffconfig.get_batch_size())
+      op.set_batch_size(self._ffconfig.batch_size)
 
     for op in self._ops:
-      op.set_batch_size(self._ffconfig.get_batch_size())
+      op.set_batch_size(self._ffconfig.batch_size)
       
       if len(op.layer.op_list) == 1:
         shared_op = None
