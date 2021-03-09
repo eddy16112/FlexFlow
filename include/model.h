@@ -320,7 +320,9 @@ public:
                     const char* name = NULL);
   // Add a batch_matmul layer
   Tensor batch_matmul(const Tensor& A,
-                      const Tensor& B);
+                      const Tensor& B,
+                      int a_seq_length_dim=-1,
+                      int b_seq_length_dim=-1);
   // Add a dense layer
   Tensor dense(const Tensor& input,
                int outDim,
@@ -423,9 +425,9 @@ public:
   void reset_metrics();
   void init_layers();
   void prefetch();
-  void forward();
+  void forward(int seq_length = -1);
   void compute_metrics();
-  void backward();
+  void backward(int seq_length = -1);
   void update();
   bool apply_fusion(const std::vector<Op*>& layers, std::vector<Op*>& new_layers);
   void compile(LossType loss_type,
@@ -452,9 +454,13 @@ public:
   IndexSpace get_task_is(const Domain& domain) const;
   IndexSpace get_task_is(ParallelConfig pc) const;
   IndexSpace get_task_is(int ndims, const std::string& pcname) const;
+  // APIs for setting iteration configs
+public:
+  void set_iteration_config_sequence_length(int seq_length);
 public:
   int op_global_guid;
   FFConfig config;
+  FFIterationConfig iter_config;
   Optimizer* optimizer;
   Loss* loss_op;
   Metrics* metrics_op;
@@ -935,13 +941,16 @@ public:
 class BatchMatmulMeta : public OpMeta {
 public:
   BatchMatmulMeta(FFHandler handler);
+  int a_seq_length_dim, b_seq_length_dim;
 };
 
 class BatchMatmul : public Op {
 public:
   BatchMatmul(FFModel& model,
               const Tensor& A,
-              const Tensor& B);
+              const Tensor& B,
+              int a_seq_length_dim,
+              int b_seq_length_dim);
   void init(const FFModel&);
   void forward(const FFModel&);
   void backward(const FFModel&);
@@ -962,7 +971,11 @@ public:
                       const float* a_ptr,
                       const float* b_ptr,
                       const float* c_ptr,
-                      int m, int n, int k, int batch);
+                      int m, int n, int k,
+                      int batch,
+                      int a_seq_length_dim = -1,
+                      int b_seq_length_dim = -1,
+                      int seq_length = -1);
   static void backward_kernel(const BatchMatmulMeta* meta,
                        const float* o_ptr,
                        const float* o_grad_ptr,
@@ -985,6 +998,7 @@ private:
   template<int NDIM>
   void backward_with_dim(const FFModel& ff);
 public:
+  int a_seq_length_dim, b_seq_length_dim;
   //bool profiling;
 };
 
@@ -1534,6 +1548,7 @@ public:
                              const ParallelConfig& pc,
                              CostMetrics& cost_metrics);
 public:
+  FFIterationConfig iter_config;
   int op_num_inputs[MAX_NUM_FUSED_OPERATORS];
   int op_num_weights[MAX_NUM_FUSED_OPERATORS];
   int op_num_outputs[MAX_NUM_FUSED_OPERATORS];
@@ -1579,7 +1594,7 @@ void data_load_task(const Task* task,
                     const std::vector<PhysicalRegion>& regions,
                     Context ctx, Runtime* runtime);
 
-void register_custom_tasks();
+void register_flexflow_internal_tasks();
 
-void register_c_custom_tasks();
+void register_custom_tasks();
 #endif//_FLEXFLOW_MODEL_H_
