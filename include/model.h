@@ -665,15 +665,7 @@ public:
   Initializer *bias_initializer;
 };
 
-class DropoutMeta : public OpMeta {
-public:
-  DropoutMeta(FFHandler handle);
-  cudnnTensorDescriptor_t inputTensor, outputTensor;
-  cudnnDropoutDescriptor_t dropoutDesc;
-  void *reserveSpace, *dropoutStates;
-  size_t reserveSpaceSize, dropoutStateSize;
-};
-
+class DropoutMeta;
 class Dropout : public Op {
 public:
   Dropout(FFModel& model,
@@ -692,9 +684,6 @@ public:
   static OpMeta* init_task(const Task *task,
                            const std::vector<PhysicalRegion> &regions,
                            Context ctx, Runtime *runtime);
-  void init_meta(DropoutMeta *m,
-                 Domain const &input_domain,
-                 Domain const &output_domain) const;
   static void forward_task(const Task *task,
                            const std::vector<PhysicalRegion> &regions,
                            Context ctx, Runtime *runtime);
@@ -718,6 +707,21 @@ public:
   float rate;
   unsigned long long seed;
 };
+
+class DropoutMeta : public OpMeta {
+public:
+  DropoutMeta(FFHandler handle,
+              const Dropout* dropout,
+              Memory gpu_mem,
+              const Domain& output_domain);
+  ~DropoutMeta(void);
+  Realm::RegionInstance reserveInst;
+  cudnnTensorDescriptor_t inputTensor, outputTensor;
+  cudnnDropoutDescriptor_t dropoutDesc;
+  void *reserveSpace, *dropoutStates;
+  size_t reserveSpaceSize, dropoutStateSize;
+};
+
 
 class Pool2D : public Op {
 public:
@@ -773,6 +777,7 @@ public:
   char op_name[MAX_OPNAME];
 };
 
+class BatchNormMeta;
 class BatchNorm : public Op {
 public:
   BatchNorm(FFModel& model,
@@ -791,14 +796,6 @@ public:
   static OpMeta* init_task(const Task *task,
                            const std::vector<PhysicalRegion> &regions,
                            Context ctx, Runtime *runtime);
-  void init_meta(BatchNormMeta *meta,
-                 Rect<4> const &input,
-                 Rect<4> const &output,
-                 Rect<1> const &scale,
-                 Rect<1> const &bias) const;
-  static void init_para_task(const Task *task,
-                             const std::vector<PhysicalRegion> &regions,
-                             Context ctx, Runtime *runtime);
   static void forward_task(const Task *task,
                            const std::vector<PhysicalRegion> &regions,
                            Context ctx, Runtime *runtime);
@@ -830,13 +827,20 @@ public:
 
 class BatchNormMeta : public OpMeta {
 public:
-  BatchNormMeta(FFHandler handle);
+  BatchNormMeta(FFHandler handle,
+                const BatchNorm* bn,
+                Memory gpu_mem,
+                int output_n,
+                int output_c,
+                int output_h,
+                int output_w);
+  ~BatchNormMeta(void);
+  Realm::RegionInstance reserveInst;
   cudnnTensorDescriptor_t inputTensor, outputTensor, biasTensor;
   cudnnActivationDescriptor_t actiDesc;
   cudnnBatchNormMode_t mode;
   float *runningMean, *runningVar, *saveMean, *saveVar;
   bool relu;
-  coord_t numChannels;
 };
 
 class LinearMeta : public OpMeta {
