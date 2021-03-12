@@ -345,6 +345,7 @@ public:
   Tensor flat(const Tensor& input, const char *name = NULL);
   // Add a softmax layer
   Tensor softmax(const Tensor& input,
+                 int dim=-1,
                  const char *name = NULL);
   // Create input tensors and constants
   Tensor transpose(const Tensor& input,
@@ -1187,17 +1188,12 @@ public:
   void *reserveSpace;
 };
 
-class SoftmaxMeta : public OpMeta {
-public:
-  SoftmaxMeta(FFHandler handle); 
-  cudnnTensorDescriptor_t inputTensor;
-  char op_name[MAX_OPNAME];
-};
-
+class SoftmaxMeta;
 class Softmax : public Op {
 public:
   Softmax(FFModel& model,
           const Tensor& logit,
+          int dim,
           const char* name);
   void init(const FFModel&);
   void forward(const FFModel&);
@@ -1217,9 +1213,6 @@ public:
   static void backward_task(const Task *task,
                             const std::vector<PhysicalRegion> &regions,
                             Context ctx, Runtime *runtime);
-  void init_meta(SoftmaxMeta *m,
-                 Rect<2> const &input,
-                 Rect<2> const &output) const;
   bool measure_operator_cost(Simulator* sim,
                              const ParallelConfig& pc,
                              CostMetrics& cost_metrics);
@@ -1229,8 +1222,31 @@ public:
   static void backward_kernel(float *input_grad_ptr,
                               float const *output_grad_ptr,
                               size_t num_elements);
+private:
+  template<int NDIM>
+  void create_output_and_partition_with_dim(FFModel& model);
+  template<int NDIM>
+  static void forward_task_with_dim(const Task *task,
+                                    const std::vector<PhysicalRegion> &regions,
+                                    Context ctx, Runtime *runtime);
+  template<int NDIM>
+  static void backward_task_with_dim(const Task *task,
+                                     const std::vector<PhysicalRegion> &regions,
+                                     Context ctx, Runtime *runtime);
 public:
   //bool profiling;
+  int dim;
+};
+
+class SoftmaxMeta : public OpMeta {
+public:
+  SoftmaxMeta(FFHandler handle,
+              const Softmax* softmax,
+              const Domain& input_domain); 
+  cudnnTensorDescriptor_t inputTensor;
+  bool profiling;
+  int dim;
+  char op_name[MAX_OPNAME];
 };
 
 class TransposeMeta : public OpMeta {

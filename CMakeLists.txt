@@ -126,7 +126,8 @@ set(FLEXFLOW_SRC
   ${FLEXFLOW_ROOT}/src/runtime/model.cc
   ${FLEXFLOW_ROOT}/src/runtime/optimizer.cc
   ${FLEXFLOW_ROOT}/src/runtime/strategy.cc
-  ${FLEXFLOW_ROOT}/src/runtime/simulator.cc)
+  ${FLEXFLOW_ROOT}/src/runtime/simulator.cc
+  ${FLEXFLOW_ROOT}/src/runtime/machine_model.cc)
 
 set(FLEXFLOW_GPU_SRC
   ${FLEXFLOW_ROOT}/src/loss_functions/loss_functions.cu
@@ -186,6 +187,9 @@ option(FF_BUILD_ALL_EXAMPLES "build all examples. Overrides others" OFF)
 
 # Python
 if(FF_USE_PYTHON)
+  if(FF_USE_PYBIND)
+    add_subdirectory(deps/pybind11)
+  endif()
   add_subdirectory(python)
 endif()
 
